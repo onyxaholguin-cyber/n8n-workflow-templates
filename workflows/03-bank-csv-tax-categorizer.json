@@ -1,0 +1,247 @@
+{
+  "name": "Categorize bank CSV transactions into Schedule C or Schedule E tax categories with an n8n form",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Bank CSV → tax categories (Schedule C / Schedule E)\n**Who it's for:** freelancers, sole proprietors and small landlords (US) who export transactions from their bank and sort them in a spreadsheet at tax time.\n\n**What it does:** a simple web form. Upload a bank or credit-card CSV, pick **Freelancer (Schedule C)** or **Landlord (Schedule E)**, and get back a categorized CSV plus totals per tax line. Your file is processed inside your own n8n; nothing goes to a third party.\n\n- Detects Date / Description / Amount (or Debit / Credit) columns automatically, even with bank info above the header\n- Handles `$1,234.56`, `(45.10)`, `1.234,56`, most date formats, comma/semicolon/tab files\n- Keyword rules map merchants to categories (Adobe → Software, Home Depot → Supplies, Xcel → Utilities…); unmatched rows are left blank for you to fill\n- Mortgage payments are deliberately left blank (split interest, principal and escrow yourself)\n\n### Setup (2 minutes)\n1. **Publish** (activate) the workflow and open the **Production URL** of the form trigger.\n2. Upload a CSV and download the result. Paste it into your spreadsheet.\n\n### Customize\nEdit the keyword rules in the **Categorize** node (search for `rules:`). Categories follow the column layout of the Sheet & Flow Rental Property Tracker and Freelancer Finance Tracker, but work with any sheet.\n\n*Organizes records only; not tax advice. Categorizer logic: github.com/onyxaholguin-cyber/bank-csv-categorizer (MIT, tested).*",
+        "width": 520,
+        "height": 900,
+        "color": 4
+      },
+      "id": "bc1cae0b-4f04-5fd6-aaf3-20cb6362dd76",
+      "name": "Main note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Categorize bank transactions",
+        "formDescription": "Upload a CSV export from your bank or card. Processed in this n8n instance only. Not tax advice.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "CSV file",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv,.txt",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Mode",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Freelancer (Schedule C)"
+                  },
+                  {
+                    "option": "Landlord (Schedule E)"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Date format",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "MM/DD/YYYY (US)"
+                  },
+                  {
+                    "option": "DD/MM/YYYY"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Charges are positive numbers (many credit card exports)",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "No"
+                  },
+                  {
+                    "option": "Yes"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Property name (landlord mode, optional)"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "b3a85ab1-a51e-5a49-aca7-49987b3499e9",
+      "name": "Upload bank CSV",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        140,
+        200
+      ],
+      "webhookId": "462373b2-f9b9-57db-a14e-87c9cd30996d"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "binaryPropertyName": "CSV_file",
+        "options": {}
+      },
+      "id": "9af448d6-50e2-5d0f-96a8-c51a6c2b0e87",
+      "name": "Read CSV text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// BankCat categorizer from bank-csv-categorizer (MIT)\nconst BankCat = (function () {\n  const module = { exports: {} };\n/* bank-csv-categorizer: turn a bank/card CSV export into categorized rows for\n   landlord (Schedule E) or freelancer (Schedule C) spreadsheets. Runs locally, zero dependencies.\n   Works in the browser (window.BankCat) and in Node (require). MIT license. */\n(function (root, factory) {\n  if (typeof module === 'object' && module.exports) module.exports = factory();\n  else root.BankCat = factory();\n})(typeof self !== 'undefined' ? self : this, function () {\n  \n\n  // ---------- presets (categories match the Sheet & Flow trackers' Setup tabs) ----------\n  const PRESETS = {\n    landlord: {\n      label: 'Landlord (Schedule E)',\n      categories: {\n        'Rent': 'Line 3', 'Late fee': 'Line 3', 'Pet / other tenant fees': 'Line 3', 'Kept security deposit': 'Line 3', 'Other rental income': 'Line 3',\n        'Advertising': 'Line 5', 'Auto & travel': 'Line 6', 'Cleaning & maintenance': 'Line 7', 'Commissions': 'Line 8', 'Insurance': 'Line 9',\n        'Legal & professional fees': 'Line 10', 'Management fees': 'Line 11', 'Mortgage interest': 'Line 12', 'Other interest': 'Line 13',\n        'Repairs': 'Line 14', 'Supplies': 'Line 15', 'Property taxes': 'Line 16', 'Utilities': 'Line 17', 'Depreciation': 'Line 18',\n        'HOA dues': 'Line 19', 'Pest control': 'Line 19', 'Landscaping / snow': 'Line 19', 'Other expense': 'Line 19',\n        'Mortgage principal': 'None', 'Capital improvement': 'None', 'Owner draw / transfer': 'None',\n      },\n      rules: [\n        ['in', 'late fee', 'Late fee'],\n        ['in', 'security deposit', 'Other rental income'],\n        ['in', 'rent|zelle|venmo|cash app|cashapp|paypal|turbotenant|avail|cozy|rentredi|apartments\\\\.com|baselane|buildium|appfolio', 'Rent'],\n        ['any', 'transfer|xfer|to savings|from savings', 'Owner draw / transfer'],\n        ['out', 'property tax|county treas|tax collector|assessor', 'Property taxes'],\n        ['out', 'hoa|homeowners assoc|owners association|condo assoc', 'HOA dues'],\n        ['out', 'pest|terminix|orkin|rollins', 'Pest control'],\n        ['out', 'lawn|landscap|snow removal|snow plow|tree service', 'Landscaping / snow'],\n        ['out', 'property management|prop mgmt|management fee', 'Management fees'],\n        ['out', 'plumb|electrician|hvac|heating|handyman|roofing|roofer|appliance repair|locksmith|garage door', 'Repairs'],\n        ['out', 'home depot|lowe\\'?s|menards|ace hardware|harbor freight|true value', 'Supplies'],\n        ['out', 'clean|maid|janitorial|carpet|junk removal', 'Cleaning & maintenance'],\n        ['out', 'insurance|state farm|allstate|geico|progressive|farmers ins|nationwide|lemonade|obie|steadily|travelers', 'Insurance'],\n        ['out', 'water|sewer|electric|energy|power co|utility|utilities|xcel|pg&e|duke|con ed|dominion|waste|trash|republic services|natural gas', 'Utilities'],\n        ['out', 'zillow|apartments\\\\.com|craigslist|rentler|hotpads|facebook ads|meta ads', 'Advertising'],\n        ['out', 'attorney|law office|legal|cpa|accountant|bookkeep|tax prep|turbotax|h&r block', 'Legal & professional fees'],\n        ['out', 'realtor|brokerage|leasing fee|tenant placement', 'Commissions'],\n        ['out', 'mileage|parking|toll|uber|lyft', 'Auto & travel'],\n      ],\n      notes: { 'mortgage|home loan|loan pmt|loan payment|rocket|mr\\\\.? cooper|servicing': 'Mortgage payment: split it into Mortgage interest, Mortgage principal and escrow (taxes/insurance) using your lender statement.' },\n      columns: ['Date', 'Property', 'Unit', 'Category', 'Payee / payer', 'Description', 'Amount'],\n      pasteHint: 'Paste into the Transactions tab, cell A (first empty row). Columns: Date, Property, Unit, Category, Payee / payer, Description, Amount.',\n    },\n    freelancer: {\n      label: 'Freelancer (Schedule C)',\n      categories: {\n        'Advertising & marketing': 'Line 8', 'Car & truck': 'Line 9', 'Platform & payment fees': 'Line 10', 'Contractors': 'Line 11',\n        'Equipment (depreciation / 179)': 'Line 13', 'Business insurance': 'Line 15', 'Interest (business)': 'Line 16b', 'Legal & accounting': 'Line 17',\n        'Office expense & postage': 'Line 18', 'Equipment rental': 'Line 20a', 'Coworking / office rent': 'Line 20b', 'Repairs & maintenance': 'Line 21',\n        'Supplies & materials': 'Line 22', 'Licenses & business taxes': 'Line 23', 'Travel': 'Line 24a', 'Business meals': 'Line 24b',\n        'Phone & internet': 'Line 25', 'Software & subscriptions': 'Line 27a', 'Education & training': 'Line 27a', 'Bank fees': 'Line 27a',\n        'Other business expense': 'Line 27a', 'Home office': 'Line 30', 'Not on Schedule C (personal / owner draw / tax payments)': 'None',\n      },\n      rules: [\n        ['out', 'irs|us treasury|u\\\\.s\\\\. treasury|eftps|state tax|dept of revenue|department of revenue|franchise tax bd|transfer|xfer', 'Not on Schedule C (personal / owner draw / tax payments)'],\n        ['out', 'google ads|facebook ads|meta ads|fb ads|linkedin ads|mailchimp|convertkit|kit\\\\.com|beehiiv|squarespace|wix|godaddy|namecheap', 'Advertising & marketing'],\n        ['out', 'stripe fee|paypal fee|square fee|upwork|fiverr|etsy fee|gumroad fee|payoneer fee', 'Platform & payment fees'],\n        ['out', 'monthly service fee|service charge|overdraft|wire fee|atm fee|bank fee|maintenance fee', 'Bank fees'],\n        ['out', 'adobe|figma|notion|slack|zoom|google \\\\*?workspace|gsuite|g suite|microsoft|msft|dropbox|github|atlassian|canva|openai|chatgpt|anthropic|aws|amazon web services|digitalocean|heroku|vercel|netlify|quickbooks|freshbooks|1password|calendly|loom', 'Software & subscriptions'],\n        ['out', 'verizon|at&t|att\\\\*|t-mobile|tmobile|comcast|xfinity|spectrum|cox comm|google fi|mint mobile', 'Phone & internet'],\n        ['out', 'wework|regus|coworking|industrious', 'Coworking / office rent'],\n        ['out', 'staples|office depot|officemax|usps|ups store|fedex|stamps\\\\.com', 'Office expense & postage'],\n        ['out', 'udemy|coursera|skillshare|oreilly|o\\'reilly|masterclass|egghead|frontend masters', 'Education & training'],\n        ['out', 'airline|delta air|united air|american air|southwest|jetblue|alaska air|hotel|marriott|hilton|hyatt|airbnb|expedia|booking\\\\.com|amtrak', 'Travel'],\n        ['out', 'restaurant|cafe|coffee|starbucks|doordash|grubhub|ubereats|uber eats|chipotle|panera', 'Business meals'],\n        ['out', 'uber|lyft|shell|chevron|exxon|mobil|bp#|valero|parking|toll', 'Car & truck'],\n        ['out', 'hiscox|next insurance|business insurance|liability ins', 'Business insurance'],\n        ['out', 'attorney|law office|legal|cpa|accountant|bookkeep|turbotax|h&r block', 'Legal & accounting'],\n        ['out', 'apple\\\\.com|apple store|best buy|dell|b&h photo|lenovo', 'Equipment (depreciation / 179)'],\n        ['out', 'business license|secretary of state|registered agent|llc fee', 'Licenses & business taxes'],\n      ],\n      notes: {},\n      columns: ['Date', 'Vendor', 'Category', 'Description', 'Amount', 'Business-use %'],\n      pasteHint: 'Paste into the Expenses tab, cell A (first empty row). Columns: Date, Vendor, Category, Description, Amount, Business-use %. Money coming in is left out: log client payments on the Payments tab.',\n    },\n  };\n\n  // ---------- CSV ----------\n  function detectDelimiter(text) {\n    const first = text.split(/\\r?\\n/).find((l) => l.trim()) || '';\n    const counts = [',', ';', '\\t'].map((d) => [d, splitLine(first, d).length]);\n    counts.sort((a, b) => b[1] - a[1]);\n    return counts[0][1] > 1 ? counts[0][0] : ',';\n  }\n  function splitLine(line, d) { return parseCSV(line, d)[0] || []; }\n  function parseCSV(text, delim) {\n    text = String(text).replace(/^\\uFEFF/, '');\n    const d = delim || detectDelimiter(text);\n    const rows = []; let row = [], field = '', q = false;\n    for (let i = 0; i < text.length; i++) {\n      const c = text[i];\n      if (q) {\n        if (c === '\"') { if (text[i + 1] === '\"') { field += '\"'; i++; } else q = false; }\n        else field += c;\n      } else if (c === '\"') q = true;\n      else if (c === d) { row.push(field); field = ''; }\n      else if (c === '\\n' || c === '\\r') {\n        if (c === '\\r' && text[i + 1] === '\\n') i++;\n        row.push(field); field = '';\n        if (row.some((x) => x.trim() !== '')) rows.push(row);\n        row = [];\n      } else field += c;\n    }\n    row.push(field); if (row.some((x) => x.trim() !== '')) rows.push(row);\n    return rows;\n  }\n\n  // ---------- values ----------\n  function parseAmount(s) {\n    if (s == null) return null;\n    let t = String(s).trim();\n    if (!t) return null;\n    let neg = false;\n    if (/^\\(.*\\)$/.test(t)) { neg = true; t = t.slice(1, -1); }\n    if (/-$/.test(t)) { neg = true; t = t.slice(0, -1); }\n    if (/^(CR|DR)\\b|\\b(CR|DR)$/i.test(t)) { if (/DR/i.test(t)) neg = true; t = t.replace(/\\b(CR|DR)\\b/ig, ''); }\n    t = t.replace(/[\\s$€£¥]|USD|EUR|GBP/gi, '');\n    if (t.startsWith('-')) { neg = !neg; t = t.slice(1); }\n    if (t.startsWith('+')) t = t.slice(1);\n    if (/^\\d{1,3}(\\.\\d{3})*,\\d{1,2}$/.test(t) || /^\\d+,\\d{1,2}$/.test(t)) t = t.replace(/\\./g, '').replace(',', '.'); // 1.234,56\n    else t = t.replace(/,/g, '');\n    if (!/^\\d*\\.?\\d+$/.test(t)) return null;\n    const v = Math.round(parseFloat(t) * 100) / 100;\n    return neg ? -v : v;\n  }\n  function pad(n) { return String(n).padStart(2, '0'); }\n  function parseDate(s, order) {\n    const t = String(s || '').trim();\n    let m;\n    if ((m = t.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})/))) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;\n    if ((m = t.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{2,4})/))) {\n      let [a, b, y] = [+m[1], +m[2], +m[3]]; if (y < 100) y += 2000;\n      let mo = a, da = b;\n      if (order === 'dmy' || (a > 12 && b <= 12)) { mo = b; da = a; }\n      if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;\n      return `${y}-${pad(mo)}-${pad(da)}`;\n    }\n    const months = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };\n    if ((m = t.match(/^(\\d{1,2})[ -]([A-Za-z]{3})[a-z]*[ -,]*(\\d{4})/)) && months[m[2].toLowerCase()]) return `${m[3]}-${pad(months[m[2].toLowerCase()])}-${pad(m[1])}`;\n    if ((m = t.match(/^([A-Za-z]{3})[a-z]*\\.? (\\d{1,2}),? (\\d{4})/)) && months[m[1].toLowerCase()]) return `${m[3]}-${pad(months[m[1].toLowerCase()])}-${pad(m[2])}`;\n    return null;\n  }\n\n  // ---------- columns ----------\n  function detectColumns(header) {\n    const h = header.map((x) => String(x).trim().toLowerCase());\n    const find = (res, not) => { for (const r of res) { const i = h.findIndex((x) => r.test(x) && !(not && not.test(x))); if (i >= 0) return i; } return -1; };\n    const cols = {\n      date: find([/^(transaction |trans\\.? |posting |posted |post )?date$/, /date/]),\n      description: find([/^description$/, /desc/, /payee|merchant|name|memo|narrative|details$|transaction$/], /date|amount|balance|type|category|#/),\n      amount: find([/^amount$/, /amount/], /balance|debit|credit/),\n      debit: find([/debit|withdrawal|money out|paid out|^out$/]),\n      credit: find([/credit|deposit|money in|paid in|^in$/], /card/),\n    };\n    if (cols.description < 0) cols.description = find([/details|memo/]);\n    return cols;\n  }\n\n  function cleanVendor(desc) {\n    let t = String(desc || '')\n      .replace(/^(pos |debit card |dbt crd |purchase |checkcard |check card |recurring |ach |online |card )+(purchase|payment|debit|pmt|withdrawal)?\\s*/i, '')\n      .replace(/\\b(sq|tst|pp|py|sp)\\s*\\*\\s*/i, '')\n      .replace(/\\b\\d{2}\\/\\d{2}(\\/\\d{2,4})?\\b/g, '')\n      .replace(/#?\\d{4,}|x{2,}\\d+|\\*+\\d+/gi, '')\n      .replace(/\\s{2,}/g, ' ').trim();\n    t = t.split(/\\s+(?=[A-Z]{2}$)/)[0];                 // trailing state code\n    const words = t.split(' ').filter(Boolean).slice(0, 4).join(' ');\n    return words.replace(/\\w\\S*/g, (w) => (w.length > 3 || /[a-z]/.test(w) ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).trim();\n  }\n\n  function compileRules(rules) {\n    return rules.map(([dir, pattern, category]) => ({ dir, category, re: new RegExp('(^|[^a-z0-9])(' + pattern + ')', 'i') }));\n  }\n  function parseRulesText(text, preset) {\n    const out = [], errors = [];\n    String(text).split(/\\r?\\n/).forEach((line, i) => {\n      const t = line.trim(); if (!t || t.startsWith('#')) return;\n      const m = t.match(/^(?:(in|out|any):\\s*)?(.+?)\\s*=>\\s*(.+)$/i);\n      if (!m) { errors.push(`Line ${i + 1}: expected \"keyword|keyword => Category\"`); return; }\n      const cat = m[3].trim();\n      if (preset && !(cat in PRESETS[preset].categories)) { errors.push(`Line ${i + 1}: unknown category \"${cat}\"`); return; }\n      try { new RegExp(m[2]); } catch (e) { errors.push(`Line ${i + 1}: bad pattern`); return; }\n      out.push([(m[1] || 'any').toLowerCase(), m[2].trim(), cat]);\n    });\n    return { rules: out, errors };\n  }\n  function rulesToText(rules) { return rules.map(([d, p, c]) => `${d}: ${p} => ${c}`).join('\\n'); }\n\n  function categorize(csvText, opts) {\n    opts = opts || {};\n    const mode = opts.mode || 'landlord'; const P = PRESETS[mode];\n    const rules = compileRules(opts.rules || P.rules);\n    const notes = Object.entries(P.notes || {}).map(([p, n]) => [new RegExp(p, 'i'), n]);\n    const rows = parseCSV(csvText);\n    // header = first row with a date-like column name and >= 3 cells (some banks put account info above)\n    const hi = rows.findIndex((r) => r.length >= 2 && r.some((c) => /date/i.test(c)));\n    if (hi < 0) throw new Error('Could not find a header row with a \"Date\" column.');\n    const cols = detectColumns(rows[hi]);\n    if (cols.date < 0 || cols.description < 0 || (cols.amount < 0 && cols.debit < 0 && cols.credit < 0))\n      throw new Error('Could not find Date, Description and Amount (or Debit/Credit) columns.');\n    const flip = !!opts.flipSign;\n    const out = [], skipped = [], summary = {}; let uncategorized = 0, incomeSkipped = 0;\n    for (const r of rows.slice(hi + 1)) {\n      const date = parseDate(r[cols.date], opts.dateOrder);\n      let amt = null;\n      if (cols.amount >= 0 && String(r[cols.amount] || '').trim()) amt = parseAmount(r[cols.amount]);\n      else {\n        const de = cols.debit >= 0 ? parseAmount(r[cols.debit]) : null, cr = cols.credit >= 0 ? parseAmount(r[cols.credit]) : null;\n        if (de) amt = -Math.abs(de); else if (cr) amt = Math.abs(cr);\n      }\n      if (!date || amt == null || amt === 0) { skipped.push(r); continue; }\n      if (flip) amt = -amt;\n      const desc = String(r[cols.description] || '').replace(/\\s+/g, ' ').trim();\n      const dir = amt > 0 ? 'in' : 'out';\n      if (mode === 'freelancer' && dir === 'in') { incomeSkipped++; continue; }\n      const rule = rules.find((x) => (x.dir === 'any' || x.dir === dir) && x.re.test(desc));\n      const category = rule ? rule.category : '';\n      const note = !category ? (notes.find(([re]) => re.test(desc)) || [])[1] || '' : '';\n      if (!category) uncategorized++;\n      const line = category ? P.categories[category] : '';\n      const key = category || '(uncategorized)';\n      summary[key] = summary[key] || { category: key, line: line || '', count: 0, total: 0 };\n      summary[key].count++; summary[key].total = Math.round((summary[key].total + Math.abs(amt)) * 100) / 100;\n      const vendor = cleanVendor(desc);\n      const row = mode === 'landlord'\n        ? [date, opts.property || '', '', category, vendor, desc, Math.abs(amt)]\n        : [date, vendor, category, desc, Math.abs(amt), ''];\n      out.push({ date, amount: amt, direction: dir, description: desc, vendor, category, line, note, row });\n    }\n    const byLine = {};\n    Object.values(summary).forEach((s) => { if (s.line && s.line !== 'None') byLine[s.line] = Math.round(((byLine[s.line] || 0) + s.total) * 100) / 100; });\n    return { mode, columns: P.columns, detected: cols, header: rows[hi], rows: out, skipped: skipped.length, incomeSkipped, uncategorized,\n      summary: Object.values(summary).sort((a, b) => b.total - a.total), byLine };\n  }\n\n  function toTSV(result, withHeader) {\n    const esc = (v) => String(v).replace(/[\\t\\r\\n]+/g, ' ');\n    const lines = result.rows.map((r) => r.row.map(esc).join('\\t'));\n    return (withHeader ? [result.columns.join('\\t')] : []).concat(lines).join('\\n');\n  }\n  function toCSV(result) {\n    const esc = (v) => { v = String(v); return /[\",\\n]/.test(v) ? '\"' + v.replace(/\"/g, '\"\"') + '\"' : v; };\n    return [result.columns].concat(result.rows.map((r) => r.row)).map((r) => r.map(esc).join(',')).join('\\n') + '\\n';\n  }\n\n  return { PRESETS, parseCSV, parseAmount, parseDate, detectColumns, cleanVendor, categorize, parseRulesText, rulesToText, toTSV, toCSV };\n});\n\n  return module.exports;\n})();\n\n// ---- run it on the uploaded file ----\nconst form = $('Upload bank CSV').first().json;\nconst text = $input.first().json.data || '';\nconst mode = String(form['Mode'] || '').startsWith('Landlord') ? 'landlord' : 'freelancer';\nconst result = BankCat.categorize(text, {\n  mode,\n  property: form['Property name (landlord mode, optional)'] || '',\n  dateOrder: String(form['Date format'] || '').startsWith('DD') ? 'dmy' : 'mdy',\n  flipSign: String(form['Charges are positive numbers (many credit card exports)'] || '') === 'Yes',\n  // rules: [['out', 'kwik mart|7-eleven', 'Supplies'], ...BankCat.PRESETS[mode].rules],   // <- add your own rules first\n});\nconst money = v => '$' + v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst summary = result.summary.map(s => `${s.category}${s.line && s.line !== 'None' ? ' (' + s.line + ')' : ''}: ${s.count} rows, ${money(s.total)}`);\nconst message = `${result.rows.length} rows categorized in ${mode} mode; ${result.uncategorized} need a category`\n  + (mode === 'freelancer' ? `; ${result.incomeSkipped} money-in rows left out` : '') + '.\\n' + summary.join('\\n');\nreturn [{ json: { csv: BankCat.toCSV(result), message, rows: result.rows.length, uncategorized: result.uncategorized, byLine: result.byLine } }];\n"
+      },
+      "id": "cc1e7d95-ff0c-519c-9d29-42bf1615760c",
+      "name": "Categorize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        580,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "csv",
+        "options": {
+          "fileName": "categorized-transactions.csv"
+        }
+      },
+      "id": "7951317a-3c65-544e-aaf3-56b446085197",
+      "name": "Make CSV file",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "returnBinary",
+        "completionTitle": "Done: your categorized CSV is downloading",
+        "completionMessage": "={{ $('Categorize').first().json.message }}",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "02b3bd1e-7a38-573f-af6f-6ccb838d0845",
+      "name": "Return file and totals",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        200
+      ],
+      "webhookId": "098c3472-ce1f-50c0-8811-f835080af3c7"
+    },
+    {
+      "parameters": {
+        "content": "### Form\nPublic by default. Turn on **Basic Auth** in the trigger if the URL could be found by others.",
+        "width": 240,
+        "height": 180,
+        "color": 5
+      },
+      "id": "ae211ca8-c51b-5ee0-8bb5-78bb1e7126a5",
+      "name": "Note form",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Categorize\nEdit keyword rules here. Blank category = no rule matched. Output columns match the Sheet & Flow trackers.",
+        "width": 260,
+        "height": 180,
+        "color": 5
+      },
+      "id": "b8be247f-bc63-5665-9696-6c25b61451b3",
+      "name": "Note rules",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        520,
+        -20
+      ]
+    }
+  ],
+  "connections": {
+    "Upload bank CSV": {
+      "main": [
+        [
+          {
+            "node": "Read CSV text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CSV text": {
+      "main": [
+        [
+          {
+            "node": "Categorize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Categorize": {
+      "main": [
+        [
+          {
+            "node": "Make CSV file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make CSV file": {
+      "main": [
+        [
+          {
+            "node": "Return file and totals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

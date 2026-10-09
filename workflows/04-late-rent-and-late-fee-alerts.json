@@ -1,0 +1,336 @@
+{
+  "name": "Daily late rent and late fee alerts from a Google Sheet rent ledger (grace period, flat, percent, daily fee, cap)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Late rent and late fee alerts for small landlords\n**Who it's for:** landlords and small property managers who track rent in a spreadsheet and want a morning message when rent is late, instead of checking the sheet by hand.\n\n**What it does:** every morning it reads your rent ledger (a Google Sheet published as CSV, or any CSV link), works out for each charge how many days late it is, the **late fee** under your rule and the balance owed, and posts one message to Slack, Discord, Google Chat or Mattermost listing everything that's **LATE**, **Fee owed** (rent paid, fee not) or **Partial**. Nothing is sent when everyone has paid.\n\n**Late fee rule** (set in *Settings*): no fee while days late ≤ `graceDays`; after that `lateFeeFlat` + `lateFeePercent` × rent + `dailyFee` × each day past the grace period, never more than `maxFee` (0 = no cap). Days late = date paid in full (or today) − due date.\n\n### Setup (5 minutes)\n1. Make a sheet with the columns **Tenant, Unit, Due date, Rent, Amount paid, Date paid** (one row per rent charge; dates as YYYY-MM-DD or MM/DD/YYYY).\n2. Google Sheets: **File > Share > Publish to web**, pick that tab, **CSV**, copy the link. (It's readable by anyone with the link; use tenant initials or unit numbers if that matters to you.)\n3. In **Settings**: paste the CSV link and your chat incoming webhook URL, and set your grace period and fees to match your lease and state law.\n4. Click **Execute workflow** to test, then **Publish** (activate) for the daily 8:00 run.\n\nGrace periods differ by state (e.g. Colorado: no fee until 7 days late, so `graceDays` = 6). Not legal advice.\n\nFormula walkthrough and a spreadsheet version: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/rent-late-fee-calculator-spreadsheet/",
+        "width": 560,
+        "height": 980,
+        "color": 4
+      },
+      "id": "2d072f55-b147-5275-9ad7-0c4585ae64db",
+      "name": "Main note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "2261406f-401e-56be-a571-57b2f61301a3",
+      "name": "Every day 8:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        140,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a327f02c-a873-5eb9-b4bf-5891866b9328",
+      "name": "Check rent now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fb7aabe3-2da0-57d0-8188-90083ae4a71c",
+              "name": "sheetCsvUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "127adc2c-ba46-5f70-accf-ba91f398088a",
+              "name": "chatWebhookUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "7fb8e5aa-4e70-525e-ba5b-d4e88cc45150",
+              "name": "graceDays",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "19108957-fec5-59e1-afa5-7d235f9771e9",
+              "name": "lateFeeFlat",
+              "value": 50,
+              "type": "number"
+            },
+            {
+              "id": "4cb1f4f6-b0cf-5b0f-ab91-ab29e45e24c1",
+              "name": "lateFeePercent",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "b3adb04e-89a7-5ce6-b706-904fd02cccfb",
+              "name": "dailyFee",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "8ab7eab2-382c-5c53-af83-958420954ff8",
+              "name": "maxFee",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "e1f9f4de-b716-5f6c-9f16-d2d801b4c52d",
+              "name": "asOfDate",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f4f9cc99-046c-59b1-b186-8510d6ee4cea",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ /^https?:\\/\\//.test($json.sheetCsvUrl) ? $json.sheetCsvUrl : (() => { throw new Error('Paste the CSV link of your sheet into the Settings node (Google Sheets: File > Share > Publish to web > CSV).') })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "6855fc90-8a7a-560b-b1bb-bac24c8f573f",
+      "name": "Get rent ledger CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- common.js ----\n// Shared helpers: tiny CSV parser + date math (no dependencies).\nfunction parseCSV(text) {\n  const rows = []; let row = [], f = '', q = false;\n  text = String(text || '').replace(/^\\uFEFF/, '');\n  for (let i = 0; i < text.length; i++) {\n    const c = text[i];\n    if (q) { if (c === '\"') { if (text[i + 1] === '\"') { f += '\"'; i++; } else q = false; } else f += c; }\n    else if (c === '\"') q = true;\n    else if (c === ',') { row.push(f); f = ''; }\n    else if (c === '\\n' || c === '\\r') { if (c === '\\r' && text[i + 1] === '\\n') i++; row.push(f); rows.push(row); row = []; f = ''; }\n    else f += c;\n  }\n  if (f !== '' || row.length) { row.push(f); rows.push(row); }\n  const clean = rows.filter((r) => r.some((c) => String(c).trim() !== ''));\n  if (!clean.length) return [];\n  const head = clean[0].map((h) => String(h).trim().toLowerCase());\n  return clean.slice(1).map((r) => { const o = {}; head.forEach((h, i) => { o[h] = String(r[i] == null ? '' : r[i]).trim(); }); return o; });\n}\nfunction pick(o, names) { for (const n of names) { if (o[n] !== undefined && o[n] !== '') return o[n]; } return ''; }\nfunction toDay(s) { // 'YYYY-MM-DD' or 'M/D/YYYY' -> integer day number (UTC), or null\n  s = String(s || '').trim(); let m, y, mo, d;\n  if ((m = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }\n  else if ((m = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/))) { mo = +m[1]; d = +m[2]; y = +m[3]; }\n  else return null;\n  const t = Date.UTC(y, mo - 1, d); const back = new Date(t);\n  if (back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;\n  return Math.round(t / 86400000);\n}\nfunction dayToISO(n) { return new Date(n * 86400000).toISOString().slice(0, 10); }\nfunction num(s) { s = String(s == null ? '' : s).replace(/[$,\\s]/g, ''); if (s === '') return 0; const v = Number(s.replace(/%$/, '')); return isFinite(v) ? v : NaN; }\nfunction r2(v) { return Math.round(Number((v * 100).toFixed(6))) / 100; } // half-up like a spreadsheet ROUND\nfunction money(v) { return '$' + r2(v).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ','); }\n\n// ---- rent_late.js ----\n// Rent status + late fee for each charge row, same rule as the Sheet & Flow late-fee tutorial:\n// days late = (date paid in full, else as-of date) - due date, never below 0.\n// No fee while days late <= graceDays; after that: flat + percent x rent + daily x (days late - grace), capped at maxFee (0 = no cap).\nfunction rentReport(csvText, cfg) {\n  const asOf = toDay(cfg.asOfDate);\n  if (asOf == null) throw new Error('asOfDate must be YYYY-MM-DD');\n  const grace = num(cfg.graceDays), flat = num(cfg.lateFeeFlat), pct = num(cfg.lateFeePercent) / 100, daily = num(cfg.dailyFee), cap = num(cfg.maxFee);\n  if ([grace, flat, pct, daily, cap].some((v) => !isFinite(v) || v < 0)) throw new Error('Fee settings must be numbers >= 0');\n  const rows = parseCSV(csvText), out = [], problems = [];\n  rows.forEach((r, i) => {\n    const tenant = pick(r, ['tenant', 'name', 'tenant name']), unit = pick(r, ['unit', 'property', 'address']);\n    const due = toDay(pick(r, ['due date', 'due'])), rent = num(pick(r, ['rent', 'amount due', 'monthly rent']));\n    const paid = num(pick(r, ['amount paid', 'paid'])), paidOn = pick(r, ['date paid', 'paid date', 'paid on']);\n    if (!tenant && !unit) return;\n    if (due == null || !isFinite(rent) || !isFinite(paid)) { problems.push(`Row ${i + 2} (${tenant || unit}): check the due date / rent / amount paid`); return; }\n    const paidDay = paidOn ? toDay(paidOn) : null;\n    const end = paidDay != null && paid >= rent ? paidDay : asOf;\n    const daysLate = Math.max(0, end - due);\n    let fee = 0;\n    if (daysLate > grace) { fee = flat + pct * rent + daily * (daysLate - grace); if (cap > 0) fee = Math.min(cap, fee); fee = r2(fee); }\n    const balance = r2(rent + fee - paid);\n    let status;\n    if (balance <= 0) status = 'Paid';\n    else if (paid >= rent) status = 'Fee owed';\n    else if (due > asOf) status = 'Upcoming';\n    else if (daysLate > grace) status = 'LATE';\n    else if (paid > 0) status = 'Partial';\n    else status = 'Due';\n    out.push({ tenant, unit, due: dayToISO(due), rent, paid, daysLate, fee, balance, status });\n  });\n  const flagged = out.filter((x) => x.status === 'LATE' || x.status === 'Fee owed' || x.status === 'Partial' || (x.status === 'Due' && x.daysLate > 0));\n  const order = { LATE: 0, 'Fee owed': 1, Partial: 2, Due: 3 };\n  flagged.sort((a, b) => order[a.status] - order[b.status] || b.daysLate - a.daysLate);\n  const totalOwed = flagged.reduce((s, x) => s + x.balance, 0);\n  const lines = flagged.map((x) => `${x.status === 'LATE' ? '🔴' : x.status === 'Fee owed' ? '🟠' : '🟡'} ${x.status}: ${x.tenant || '?'}${x.unit ? ' (' + x.unit + ')' : ''}, due ${x.due}, ${x.daysLate} day${x.daysLate === 1 ? '' : 's'} late, late fee ${money(x.fee)}, balance ${money(x.balance)}`);\n  const text = flagged.length\n    ? `Rent check for ${dayToISO(asOf)}: ${flagged.length} of ${out.length} charges need attention, ${money(totalOwed)} owed in total.\\n` + lines.join('\\n') + (problems.length ? '\\n⚠️ ' + problems.join('\\n⚠️ ') : '')\n    : '';\n  return { asOf: dayToISO(asOf), rows: out, flagged: flagged.length, totalOwed: r2(totalOwed), problems, text: text || (problems.length ? `Rent check for ${dayToISO(asOf)}: nothing late.\\n⚠️ ` + problems.join('\\n⚠️ ') : '') };\n}\nconst s = $('Settings').first().json;\nif (!/^https?:\\/\\//.test(String(s.chatWebhookUrl || ''))) throw new Error('Paste your chat incoming webhook URL into the Settings node.');\nconst csv = $input.first().json.data || '';\nconst r = rentReport(csv, { ...s, asOfDate: s.asOfDate || $now.toISODate() });   // asOfDate: leave blank for today\nreturn [{ json: { asOf: r.asOf, flagged: r.flagged, totalOwed: r.totalOwed, problems: r.problems, text: r.text, rows: r.rows } }];\n"
+      },
+      "id": "a4bcaf48-e34c-5344-b4bb-62066ff98ac7",
+      "name": "Work out days late and fees",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8d03cdf2-005b-5815-85d2-11a9a5303482",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0db22b8e-1649-5259-a345-e1ecb74160a4",
+      "name": "Anything to report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.chatWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, content: ($json.text).slice(0, 1990) }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "4dcb0408-1d7e-5d25-83ff-d945f2b759cf",
+      "name": "Post to chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "e42de8ef-00e8-5826-87c9-1a916be067ff",
+      "name": "Nothing to report",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Settings\nCSV link, chat webhook, and your fee rule. `asOfDate` blank = today (handy for testing a past date).",
+        "width": 230,
+        "height": 220,
+        "color": 5
+      },
+      "id": "033bdfc3-2f94-5e92-a289-46038e4e8360",
+      "name": "Note settings",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        300,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Post\nOne message per run, only when something needs attention. Swap the HTTP node for Slack, Telegram, Gmail or SMS if you prefer.",
+        "width": 280,
+        "height": 200,
+        "color": 5
+      },
+      "id": "ae74f3d5-37f4-5a1c-945f-d4109d48ccf8",
+      "name": "Note post",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Work out days late and fees": {
+      "main": [
+        [
+          {
+            "node": "Anything to report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to report?": {
+      "main": [
+        [
+          {
+            "node": "Post to chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day 8:00": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check rent now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Get rent ledger CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get rent ledger CSV": {
+      "main": [
+        [
+          {
+            "node": "Work out days late and fees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

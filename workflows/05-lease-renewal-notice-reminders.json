@@ -1,0 +1,312 @@
+{
+  "name": "Weekly lease renewal reminders: get a chat alert before each renewal or rent increase notice is due",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Never miss a lease renewal notice deadline\n**Who it's for:** landlords and property managers who keep leases in a spreadsheet. Most leases and many states require written notice 30, 60 or 90 days before the lease ends (for non-renewal or a rent increase); miss it and the lease can roll over on the old terms.\n\n**What it does:** every Monday it reads your lease list (Google Sheet published as CSV, or any CSV link) and works out the **send-by date** for each lease: lease end − notice days − mailing buffer. It posts one message with every notice due in the next `alertWindowDays` (and any that are already overdue), with the proposed new rent if you set an increase. Leases marked Renewed / Moved out / Notice sent are skipped.\n\n### Setup (5 minutes)\n1. Sheet columns: **Tenant, Unit, Lease end, Notice days** (optional, overrides the default), **Rent, Increase %** (optional), **Status** (optional).\n2. Google Sheets: **File > Share > Publish to web** > that tab > **CSV**, copy the link.\n3. In **Settings**: paste the CSV link and your chat incoming webhook URL; set `noticeDays` (default 60), `mailingBufferDays` (days you allow for mail/delivery) and `alertWindowDays`.\n4. **Execute workflow** to test, then **Publish** for the weekly run.\n\nExample: lease ends Dec 31, 60-day notice, 5-day buffer → send by Oct 27. Notice rules vary by state and lease; not legal advice.\n\nSpreadsheet version and walkthrough: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/lease-renewal-tracker-spreadsheet/",
+        "width": 560,
+        "height": 960,
+        "color": 4
+      },
+      "id": "53ef99c0-5877-5266-b85c-843976cb4bd3",
+      "name": "Main note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "1f38dd22-531c-5787-82ae-419025026530",
+      "name": "Every Monday 8:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        140,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d784157f-2f99-55e1-9341-f9f29f9a2613",
+      "name": "Check leases now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fb7aabe3-2da0-57d0-8188-90083ae4a71c",
+              "name": "sheetCsvUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "127adc2c-ba46-5f70-accf-ba91f398088a",
+              "name": "chatWebhookUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "396f511f-8850-5326-9674-0acc6d3f64fb",
+              "name": "noticeDays",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "4ada6867-13d8-5213-b2e0-4c7a5962d63f",
+              "name": "mailingBufferDays",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "ea81b1ff-d120-5422-8f75-295d68d8b221",
+              "name": "alertWindowDays",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "e1f9f4de-b716-5f6c-9f16-d2d801b4c52d",
+              "name": "asOfDate",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b23b7786-e688-5071-824e-35f2763a3e1a",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ /^https?:\\/\\//.test($json.sheetCsvUrl) ? $json.sheetCsvUrl : (() => { throw new Error('Paste the CSV link of your sheet into the Settings node (Google Sheets: File > Share > Publish to web > CSV).') })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "91887c73-91c9-5962-b3f9-47987103c5cc",
+      "name": "Get lease list CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- common.js ----\n// Shared helpers: tiny CSV parser + date math (no dependencies).\nfunction parseCSV(text) {\n  const rows = []; let row = [], f = '', q = false;\n  text = String(text || '').replace(/^\\uFEFF/, '');\n  for (let i = 0; i < text.length; i++) {\n    const c = text[i];\n    if (q) { if (c === '\"') { if (text[i + 1] === '\"') { f += '\"'; i++; } else q = false; } else f += c; }\n    else if (c === '\"') q = true;\n    else if (c === ',') { row.push(f); f = ''; }\n    else if (c === '\\n' || c === '\\r') { if (c === '\\r' && text[i + 1] === '\\n') i++; row.push(f); rows.push(row); row = []; f = ''; }\n    else f += c;\n  }\n  if (f !== '' || row.length) { row.push(f); rows.push(row); }\n  const clean = rows.filter((r) => r.some((c) => String(c).trim() !== ''));\n  if (!clean.length) return [];\n  const head = clean[0].map((h) => String(h).trim().toLowerCase());\n  return clean.slice(1).map((r) => { const o = {}; head.forEach((h, i) => { o[h] = String(r[i] == null ? '' : r[i]).trim(); }); return o; });\n}\nfunction pick(o, names) { for (const n of names) { if (o[n] !== undefined && o[n] !== '') return o[n]; } return ''; }\nfunction toDay(s) { // 'YYYY-MM-DD' or 'M/D/YYYY' -> integer day number (UTC), or null\n  s = String(s || '').trim(); let m, y, mo, d;\n  if ((m = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }\n  else if ((m = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/))) { mo = +m[1]; d = +m[2]; y = +m[3]; }\n  else return null;\n  const t = Date.UTC(y, mo - 1, d); const back = new Date(t);\n  if (back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;\n  return Math.round(t / 86400000);\n}\nfunction dayToISO(n) { return new Date(n * 86400000).toISOString().slice(0, 10); }\nfunction num(s) { s = String(s == null ? '' : s).replace(/[$,\\s]/g, ''); if (s === '') return 0; const v = Number(s.replace(/%$/, '')); return isFinite(v) ? v : NaN; }\nfunction r2(v) { return Math.round(Number((v * 100).toFixed(6))) / 100; } // half-up like a spreadsheet ROUND\nfunction money(v) { return '$' + r2(v).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ','); }\n\n// ---- lease_renewals.js ----\n// Lease renewal reminders: send-by date = lease end - notice days - mailing buffer.\n// Reports leases whose send-by date is within alertWindowDays (or already passed while the lease is still running).\nfunction renewalReport(csvText, cfg) {\n  const asOf = toDay(cfg.asOfDate);\n  if (asOf == null) throw new Error('asOfDate must be YYYY-MM-DD');\n  const defNotice = num(cfg.noticeDays), buffer = num(cfg.mailingBufferDays), win = num(cfg.alertWindowDays);\n  if ([defNotice, buffer, win].some((v) => !isFinite(v) || v < 0)) throw new Error('Day settings must be numbers >= 0');\n  const skip = /renewed|moved out|notice sent|vacat/i;\n  const rows = parseCSV(csvText), due = [], problems = [];\n  rows.forEach((r, i) => {\n    const tenant = pick(r, ['tenant', 'name', 'tenant name']), unit = pick(r, ['unit', 'property', 'address']);\n    if (!tenant && !unit) return;\n    if (skip.test(pick(r, ['status']))) return;\n    const end = toDay(pick(r, ['lease end', 'end date', 'lease end date']));\n    if (end == null) { problems.push(`Row ${i + 2} (${tenant || unit}): lease end must be a date`); return; }\n    const nd = pick(r, ['notice days']); const notice = nd === '' ? defNotice : num(nd);\n    const rent = num(pick(r, ['rent', 'current rent'])), inc = num(pick(r, ['increase %', 'planned increase %', 'increase']));\n    if (!isFinite(notice) || !isFinite(rent) || !isFinite(inc)) { problems.push(`Row ${i + 2} (${tenant || unit}): check notice days / rent / increase %`); return; }\n    const sendBy = end - notice - buffer, daysLeft = sendBy - asOf;\n    if (end < asOf) return;                       // lease already ended: not a renewal question any more\n    if (daysLeft > win) return;                   // not yet in the window\n    const newRent = r2(rent * (1 + inc / 100));\n    due.push({ tenant, unit, leaseEnd: dayToISO(end), notice, sendBy: dayToISO(sendBy), daysLeft, rent, increasePct: inc, newRent, overdue: daysLeft < 0 });\n  });\n  due.sort((a, b) => a.daysLeft - b.daysLeft);\n  const lines = due.map((x) => `${x.overdue ? '🔴 OVERDUE' : x.daysLeft <= 7 ? '🟠 This week' : '🟡 Coming up'}: ${x.tenant || '?'}${x.unit ? ' (' + x.unit + ')' : ''}, lease ends ${x.leaseEnd}, send the ${x.notice}-day notice by ${x.sendBy} (${x.overdue ? Math.abs(x.daysLeft) + ' days ago' : x.daysLeft === 0 ? 'today' : 'in ' + x.daysLeft + ' days'})` + (x.rent ? `, rent ${money(x.rent)}` + (x.increasePct ? ` → ${money(x.newRent)} (+${x.increasePct}%)` : '') : ''));\n  const text = due.length ? `Lease renewals as of ${dayToISO(asOf)}: ${due.length} notice${due.length === 1 ? '' : 's'} to send.\\n` + lines.join('\\n') + (problems.length ? '\\n⚠️ ' + problems.join('\\n⚠️ ') : '') : (problems.length ? `Lease renewals as of ${dayToISO(asOf)}: nothing due.\\n⚠️ ` + problems.join('\\n⚠️ ') : '');\n  return { asOf: dayToISO(asOf), due, problems, text };\n}\nconst s = $('Settings').first().json;\nif (!/^https?:\\/\\//.test(String(s.chatWebhookUrl || ''))) throw new Error('Paste your chat incoming webhook URL into the Settings node.');\nconst csv = $input.first().json.data || '';\nconst r = renewalReport(csv, { ...s, asOfDate: s.asOfDate || $now.toISODate() });\nreturn [{ json: { asOf: r.asOf, due: r.due, problems: r.problems, text: r.text } }];\n"
+      },
+      "id": "c36d1ac1-6b1b-55ab-b737-d0da33acfe14",
+      "name": "Work out send-by dates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bece2f83-dfa6-524b-a038-271412020e36",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "73910fa6-86c6-557a-a1d6-f0bda5521c78",
+      "name": "Anything to report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.chatWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, content: ($json.text).slice(0, 1990) }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "7714c7be-2f06-577a-86ed-4b002ba4d28a",
+      "name": "Post to chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "577b521a-9590-5185-a79e-018c427d50ef",
+      "name": "Nothing to report",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Settings\nCSV link, chat webhook, default notice days, mailing buffer and how far ahead to warn you.",
+        "width": 230,
+        "height": 220,
+        "color": 5
+      },
+      "id": "1dee66da-cdac-5101-a571-5497b769da01",
+      "name": "Note settings",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        300,
+        -60
+      ]
+    }
+  ],
+  "connections": {
+    "Work out send-by dates": {
+      "main": [
+        [
+          {
+            "node": "Anything to report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to report?": {
+      "main": [
+        [
+          {
+            "node": "Post to chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday 8:00": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check leases now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Get lease list CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get lease list CSV": {
+      "main": [
+        [
+          {
+            "node": "Work out send-by dates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

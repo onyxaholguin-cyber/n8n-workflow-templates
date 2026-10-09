@@ -1,0 +1,171 @@
+{
+  "name": "Get instant chat alerts when any n8n workflow fails (Slack, Discord, Google Chat)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Instant alert when any workflow fails\n**Who it's for:** anyone with n8n workflows in production. Without an error workflow, failed runs are silent.\n\n**What it does:** runs whenever a workflow that uses it fails, and posts one message with the workflow name, the failing node, the error message, whether it was a retry, and a link to the execution. It works with any chat app that has incoming webhooks: Slack, Discord, Google Chat, Mattermost, Rocket.Chat.\n\n### Setup (3 minutes)\n1. Open **Settings**: paste your chat **incoming webhook URL**. Optionally set an environment label (like `prod`).\n2. **Activate (publish)** this workflow. In n8n 2.x an error workflow that is not active is skipped (the log says *\"is not active and cannot be executed\"*).\n3. In each workflow you want to watch: **⋯ > Settings > Error workflow**, pick this workflow and save.\n4. Test: make a workflow fail on purpose (for example, a Code node with `throw new Error('test')`) and run it from its production trigger.\n\n### Good to know\n- Error workflows run for **production** executions (triggers, schedules, webhooks), not for manual test runs in the editor.\n- Want dedupe of repeated alerts, email/Telegram routing, backups and uptime checks? This template is a simplified version of the error router in the *n8n Reliability Pack* by Sheet & Flow.",
+        "width": 480,
+        "height": 780,
+        "color": 4
+      },
+      "id": "7d6a550a-06ab-59d8-9441-31daedf7936f",
+      "name": "Main note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -240
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4c488cd5-5b96-5e8b-a630-51581a87c25f",
+      "name": "When a workflow fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "127adc2c-ba46-5f70-accf-ba91f398088a",
+              "name": "chatWebhookUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "8d52cddf-0930-5eed-8c32-5bc4b2bf1c56",
+              "name": "environment",
+              "value": "prod",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7d0d533-5400-52a3-9c8c-6508546341a2",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds one readable alert from the Error Trigger data.\nconst e = $('When a workflow fails').first().json;\nconst s = $('Settings').first().json;\nif (!/^https?:\\/\\//.test(String(s.chatWebhookUrl || ''))) throw new Error('Paste your chat incoming webhook URL into the Settings node.');\nconst wf = e.workflow || {};\nconst ex = e.execution || {};\nconst err = (ex.error || (e.trigger && e.trigger.error) || {});\nconst msg = String(err.message || err.description || 'Unknown error').split('\\n')[0].slice(0, 600);\nconst env = s.environment ? `[${s.environment}] ` : '';\nconst lines = [\n  `🚨 ${env}n8n workflow failed: ${wf.name || 'unknown workflow'}`,\n  ex.lastNodeExecuted ? `Node: ${ex.lastNodeExecuted}` : (e.trigger ? 'Failed in the trigger (workflow did not start)' : null),\n  `Error: ${msg}`,\n  ex.mode ? `Mode: ${ex.mode}${ex.retryOf ? ' (retry of ' + ex.retryOf + ')' : ''}` : null,\n  ex.url ? `Execution: ${ex.url}` : null,\n].filter(Boolean);\nreturn [{ json: { text: lines.join('\\n'), workflowId: wf.id || null, workflowName: wf.name || null, executionId: ex.id || null, error: msg } }];\n"
+      },
+      "id": "e342bb87-0425-5d85-ab8c-50810a047f91",
+      "name": "Build alert message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        580,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.chatWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, content: ($json.text).slice(0, 1990) }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "83a258bc-be9c-5275-ae7c-c9b8e1758fe6",
+      "name": "Post alert to chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "content": "### Settings\nPaste the incoming webhook URL of your Slack / Discord / Google Chat channel here.",
+        "width": 240,
+        "height": 180,
+        "color": 5
+      },
+      "id": "7e9c4172-46b9-5afa-a363-e179e7da30f2",
+      "name": "Note settings",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        300,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Post\nSends `text` (Slack, Google Chat, Mattermost) and `content` (Discord) in one request. Retries 3 times.",
+        "width": 260,
+        "height": 180,
+        "color": 5
+      },
+      "id": "9a06687b-2bb1-5834-bde1-8ec7e1523561",
+      "name": "Note post",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        740,
+        -20
+      ]
+    }
+  ],
+  "connections": {
+    "When a workflow fails": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Build alert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build alert message": {
+      "main": [
+        [
+          {
+            "node": "Post alert to chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

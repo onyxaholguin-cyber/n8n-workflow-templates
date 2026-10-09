@@ -1,0 +1,332 @@
+{
+  "name": "Audit all n8n workflows weekly for leaked secrets, open webhooks and missing error handling",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Weekly security and reliability audit of your n8n workflows\n**Who it's for:** anyone running n8n in production (self-hosted or Cloud) who wants to catch risky workflows before they cause an incident.\n\n**What it does:** every Monday it reads all your workflows through the n8n API and checks them for:\n- API keys, tokens, webhook URLs or passwords **pasted into nodes** (shown redacted)\n- **Webhooks without authentication**\n- Workflows with an automatic trigger but **no error workflow**\n- Errors **swallowed** by \"Continue\" settings, error outputs connected to nothing\n- **Pinned test data**, orphan nodes, disabled TLS checks, plain-HTTP calls\n\nIt posts one summary to Slack, Discord, Google Chat or Mattermost (incoming webhook). Nothing is sent when everything is clean.\n\n### Setup (5 minutes)\n1. **Settings** > APIs in n8n: create an API key. Add an **n8n API** credential to the *Get all workflows* node (Base URL: `https://your-n8n/api/v1`).\n2. Open **Settings** (the Set node): paste your chat **incoming webhook URL** and your n8n editor URL.\n3. Click **Execute workflow** (the *Run audit now* trigger) to get a report right away, then **Publish** (activate) it for the weekly run.\n\n### Customize\n- `minLevel`: `error`, `warn` (default) or `info`.\n- `ignoreNames`: comma-separated workflow names to skip.\n- Per node: add `audit-ignore: rule-id` to a node's **Notes** to silence one finding.\n\nThe checks are the open-source **n8n-workflow-audit** rules (MIT). The same checks run as a CLI and GitHub Action: github.com/onyxaholguin-cyber/n8n-workflow-audit",
+        "width": 520,
+        "height": 880,
+        "color": 4
+      },
+      "id": "a91bf1be-1aca-5fe1-91b6-5abac3d4485b",
+      "name": "Main note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "b8a3cf84-4825-5c8b-9eea-0d79386d0dd1",
+      "name": "Every Monday 8:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        140,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "09f9aa1f-e378-533b-bb0d-645339cf14a5",
+      "name": "Run audit now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "127adc2c-ba46-5f70-accf-ba91f398088a",
+              "name": "chatWebhookUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "add40c22-4725-5e39-a472-3b4b40609d54",
+              "name": "n8nEditorUrl",
+              "value": "https://n8n.example.com",
+              "type": "string"
+            },
+            {
+              "id": "2ba87626-215c-5faf-9ba4-09300d93fea2",
+              "name": "minLevel",
+              "value": "warn",
+              "type": "string"
+            },
+            {
+              "id": "9035a460-2d3c-5d04-b3f0-5a80a20ad1e6",
+              "name": "ignoreNames",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "085ea53e-20e3-563d-aa77-9e501d6f18c4",
+              "name": "maxFindingsPerWorkflow",
+              "value": 8,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8d305180-2419-5895-aa41-866098ad3348",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "filters": {},
+        "requestOptions": {}
+      },
+      "id": "e0f5770a-785c-582b-81ee-16ac608deccc",
+      "name": "Get all workflows",
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        580,
+        200
+      ],
+      "credentials": {
+        "n8nApi": {
+          "id": "",
+          "name": "n8n account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Audit rules from n8n-workflow-audit (MIT)\nconst Audit = (function () {\n  const module = { exports: {} };\n\n// n8n-workflow-audit: static checks for exported n8n workflow JSON. Zero dependencies.\n\nconst LEVELS = { error: 3, warn: 2, info: 1 };\n\nconst RULES = {\n  'hardcoded-secret': { level: 'error', title: 'Secret or token pasted into a node', fix: 'Move it into an n8n credential (or an environment variable read with $env) and rotate the exposed value. Exported workflows, Git backups and shared templates carry parameters in plain text.' },\n  'secret-in-header': { level: 'error', title: 'Auth header with a literal value', fix: 'Use a Header Auth / Bearer credential instead of a literal header value.' },\n  'webhook-no-auth': { level: 'warn', title: 'Webhook without authentication', fix: 'Set Authentication (Header Auth, Basic Auth or JWT) on the Webhook node, or verify a signature in the first step and reject unsigned calls.' },\n  'no-error-workflow': { level: 'warn', title: 'No error workflow set', fix: 'Workflow settings > Error Workflow: pick a workflow that starts with an Error Trigger and alerts you (Slack, email, etc.). Without it, failed production runs are silent.' },\n  'error-swallowed': { level: 'warn', title: 'Node errors are swallowed', fix: 'Use \"On Error: Continue (using error output)\" and connect the error output, or let the node fail so the error workflow fires. If the next node deliberately checks for the error, add \"audit-ignore: error-swallowed\" to this node\\'s Notes.' },\n  'error-output-unconnected': { level: 'warn', title: 'Error output is not connected', fix: 'Connect the node\\'s error output to handling/alerting nodes, or switch On Error back to \"Stop Workflow\".' },\n  'pinned-data': { level: 'warn', title: 'Pinned test data left in the workflow', fix: 'Unpin the data before exporting or activating. Pinned data is used instead of live data in manual runs and often contains real records.' },\n  'orphan-node': { level: 'warn', title: 'Node is not connected to anything', fix: 'Connect it or delete it.' },\n  'save-errors-off': { level: 'warn', title: 'Failed executions are not saved', fix: 'Workflow settings > Save failed production executions: set to Save, otherwise you cannot debug failures.' },\n  'insecure-tls': { level: 'warn', title: 'TLS certificate checks disabled', fix: 'Turn off \"Ignore SSL Issues\" unless the target is a known internal host with a self-signed certificate.' },\n  'http-no-retry': { level: 'info', title: 'HTTP Request without Retry On Fail', fix: 'Node settings > Retry On Fail (e.g., 3 tries, 5000 ms wait) handles transient 429/5xx errors.' },\n  'plain-http': { level: 'info', title: 'Request to a non-HTTPS URL', fix: 'Use https:// for anything outside localhost / your private network.' },\n  'disabled-node': { level: 'info', title: 'Disabled node', fix: 'Delete it if it is no longer needed; disabled nodes still ship in exports.' },\n};\n\nconst TRIGGER_TYPES = new Set(['n8n-nodes-base.webhook', 'n8n-nodes-base.start', 'n8n-nodes-base.cron', 'n8n-nodes-base.interval',\n  'n8n-nodes-base.emailReadImap', 'n8n-nodes-base.manualTrigger']);\nconst isTrigger = (n) => TRIGGER_TYPES.has(n.type) || /trigger$/i.test(n.type || '');\nconst isManual = (n) => n.type === 'n8n-nodes-base.manualTrigger' || n.type === 'n8n-nodes-base.start';\nconst isSticky = (n) => n.type === 'n8n-nodes-base.stickyNote';\n\n// Token formats with distinctive prefixes: low false-positive rate.\nconst SECRET_PATTERNS = [\n  ['AWS access key', /\\b(AKIA|ASIA)[0-9A-Z]{16}\\b/],\n  ['GitHub token', /\\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\\b/],\n  ['GitLab token', /\\bglpat-[A-Za-z0-9_-]{20,}\\b/],\n  ['Slack token', /\\bxox[abposr]-[A-Za-z0-9-]{10,}/],\n  ['Slack webhook URL', /hooks\\.slack\\.com\\/services\\/T[A-Z0-9]+\\/B[A-Z0-9]+\\/[A-Za-z0-9]{20,}/],\n  ['Discord webhook URL', /discord(?:app)?\\.com\\/api\\/webhooks\\/\\d{15,}\\/[A-Za-z0-9_-]{30,}/],\n  ['Anthropic API key', /\\bsk-ant-[A-Za-z0-9_-]{20,}/],\n  ['OpenAI-style API key', /\\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}/],\n  ['Stripe key', /\\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\\b/],\n  ['Google API key', /\\bAIza[0-9A-Za-z_-]{35}\\b/],\n  ['Telegram bot token', /\\b\\d{8,10}:AA[A-Za-z0-9_-]{33}\\b/],\n  ['SendGrid key', /\\bSG\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}\\b/],\n  ['Private key', /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY( BLOCK)?-----/],\n  ['JWT', /\\beyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}/],\n  ['Bearer token', /\\bBearer\\s+(?!\\{\\{)[A-Za-z0-9._~+/-]{24,}=*/],\n  ['Password in URL', /\\b[a-z][a-z0-9+.-]*:\\/\\/[^\\s:/@'\"]+:(?!\\{\\{)[^\\s@/'\"]{6,}@/i],\n];\n// key = \"long literal\" assignments inside Code nodes.\nconst CODE_ASSIGN = /\\b(api[_-]?key|apikey|secret|token|password|passwd|access[_-]?key|auth)\\w*\\s*[:=]\\s*(['\"`])([^'\"`\\s]{16,})\\2/i;\nconst PLACEHOLDER_WORDS = /(your|enter|insert|replace|here|example|placeholder|xxx|changeme|dummy|sample|redacted|[<>\\[\\]{}]|\\$\\{|\\$\\(|^\\$[A-Za-z_]|\\*{3})/i;\nfunction isPlaceholder(v) {\n  v = String(v).trim().replace(/^(Bearer|Basic|Token)\\s+/i, '');\n  if (!v || PLACEHOLDER_WORDS.test(v)) return true;\n  if (/^[A-Z0-9_-]+$/.test(v) && /[A-Z]/.test(v) && /[_-]/.test(v)) return true; // MY_API_KEY style\n  if (/^_{2}.*_{2}$/.test(v) || /^(.)\\1+$/.test(v)) return true;               // __TOKEN_0__, aaaaaaa\n  return false;\n}\nconst SENSITIVE_HEADER = /^(authorization|proxy-authorization|x-api-key|api-key|apikey|x-auth-token|x-access-token|cookie|x-api-token|token)$/i;\n\nfunction redact(s) {\n  s = String(s);\n  return s.length <= 8 ? '****' : s.slice(0, 4) + '…' + s.slice(-2) + ` (${s.length} chars)`;\n}\n\nfunction walkStrings(value, path, out) {\n  if (typeof value === 'string') out.push([path, value]);\n  else if (Array.isArray(value)) value.forEach((v, i) => walkStrings(v, `${path}[${i}]`, out));\n  else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) walkStrings(v, path ? `${path}.${k}` : k, out);\n  return out;\n}\n\nfunction ignoredRules(node) {\n  const m = String(node.notes || '').match(/audit-ignore:\\s*([a-z0-9,\\s-]+)/i);\n  return new Set(m ? m[1].split(/[\\s,]+/).filter(Boolean) : []);\n}\n\nfunction looksLikeWorkflow(x) { return x && typeof x === 'object' && Array.isArray(x.nodes) && x.connections && typeof x.connections === 'object'; }\n\nfunction extractWorkflows(json) {\n  if (looksLikeWorkflow(json)) return [json];\n  if (Array.isArray(json)) return json.filter(looksLikeWorkflow);\n  if (json && Array.isArray(json.data)) return json.data.filter(looksLikeWorkflow); // n8n public API list response\n  if (json && json.workflow && typeof json.workflow === 'object') return extractWorkflows(json.workflow).map((w) => ({ name: json.name, ...w })); // n8n.io template API wrapper(s)\n  return [];\n}\n\nfunction auditWorkflow(wf, opts = {}) {\n  const findings = [];\n  const wfName = wf.name || '(unnamed workflow)';\n  const nodes = (wf.nodes || []).filter((n) => n && typeof n === 'object');\n  const conns = wf.connections || {};\n  const settings = wf.settings || {};\n  const skip = new Set(opts.ignore || []);\n  const add = (rule, node, detail) => {\n    if (skip.has(rule) || (node && ignoredRules(node).has(rule))) return;\n    findings.push({ rule, level: RULES[rule].level, title: RULES[rule].title, workflow: wfName, node: node ? node.name : null, detail: detail || '', fix: RULES[rule].fix });\n  };\n\n  // Connection graph (all connection types, incl. AI sub-node types).\n  const incoming = new Map(), outgoing = new Map();\n  for (const [src, types] of Object.entries(conns)) {\n    for (const [type, outputs] of Object.entries(types || {})) {\n      (outputs || []).forEach((list, outIdx) => (list || []).forEach((c) => {\n        if (!c || !c.node) return;\n        incoming.set(c.node, (incoming.get(c.node) || 0) + 1);\n        const o = outgoing.get(src) || []; o.push({ type, outIdx, to: c.node }); outgoing.set(src, o);\n      }));\n    }\n  }\n\n  const real = nodes.filter((n) => !isSticky(n));\n  const triggers = real.filter(isTrigger);\n  const hasErrorTrigger = real.some((n) => n.type === 'n8n-nodes-base.errorTrigger');\n  const autoTriggers = triggers.filter((n) => !isManual(n) && !n.disabled && n.type !== 'n8n-nodes-base.errorTrigger' && n.type !== 'n8n-nodes-base.executeWorkflowTrigger');\n\n  if (autoTriggers.length && !hasErrorTrigger && !settings.errorWorkflow)\n    add('no-error-workflow', null, `Triggers: ${autoTriggers.map((n) => n.name).join(', ')}`);\n  if (settings.saveDataErrorExecution === 'none') add('save-errors-off', null, 'settings.saveDataErrorExecution = \"none\"');\n  const pinned = Object.keys(wf.pinData || {}).filter((k) => Array.isArray(wf.pinData[k]) ? wf.pinData[k].length : wf.pinData[k]);\n  if (pinned.length) add('pinned-data', null, `Pinned on: ${pinned.join(', ')}`);\n\n  for (const n of real) {\n    const p = n.parameters || {};\n    if (n.disabled) add('disabled-node', n, n.type);\n\n    // Secrets anywhere in parameters (Code node source included).\n    const seen = new Set();\n    for (const [path, s] of walkStrings(p, '', [])) {\n      for (const [label, re] of SECRET_PATTERNS) {\n        const m = s.match(re);\n        if (m && !seen.has(m[0]) && !(label === 'Bearer token' && isPlaceholder(m[0]))) { seen.add(m[0]); add('hardcoded-secret', n, `${label} in parameters.${path}: ${redact(m[0])}`); }\n      }\n      if (/jsCode|pythonCode|functionCode|code$/i.test(path)) {\n        const lines = s.split('\\n');\n        lines.forEach((line) => {\n          if (/^\\s*(\\/\\/|#)/.test(line)) return;\n          const m = line.match(CODE_ASSIGN);\n          if (m && !isPlaceholder(m[3]) && !seen.has(m[3]) && !/^(true|false|null|undefined)$/i.test(m[3])) {\n            seen.add(m[3]); add('hardcoded-secret', n, `Literal \"${m[1]}\" value in parameters.${path}: ${redact(m[3])}`);\n          }\n        });\n      }\n    }\n    // Literal auth headers (HTTP Request v3+: headerParameters.parameters[{name,value}]).\n    const headers = ((p.headerParameters || {}).parameters || []).concat(((p.options || {}).headers || {}).parameters || []);\n    for (const h of headers) {\n      if (!h || !SENSITIVE_HEADER.test(String(h.name || '').trim())) continue;\n      const v = String(h.value || '').trim();\n      if (!v || v.startsWith('=') || v.includes('{{') || isPlaceholder(v)) continue;\n      if (![...seen].some((x) => v.includes(x))) add('secret-in-header', n, `Header \"${h.name}\": ${redact(v)}`);\n    }\n\n    if (n.type === 'n8n-nodes-base.webhook' && !n.disabled && (!p.authentication || p.authentication === 'none'))\n      add('webhook-no-auth', n, `path: ${p.path || '(auto)'}${p.httpMethod ? ', method: ' + p.httpMethod : ''}`);\n\n    const outs = outgoing.get(n.name) || [];\n    if (n.continueOnFail === true || n.onError === 'continueRegularOutput')\n      add('error-swallowed', n, n.onError ? `onError = \"${n.onError}\"` : 'continueOnFail = true');\n    if (n.onError === 'continueErrorOutput') {\n      // The error output is the last main output; with a single regular output it is index 1.\n      const mainOuts = ((conns[n.name] || {}).main || []);\n      const errIdx = n.type === 'n8n-nodes-base.if' ? 2 : (n.type === 'n8n-nodes-base.switch' ? null : 1);\n      if (errIdx !== null && !((mainOuts[errIdx] || []).length)) add('error-output-unconnected', n, `output #${errIdx} has no connection`);\n    }\n\n    const opt = p.options || {};\n    if (opt.allowUnauthorizedCerts === true || p.allowUnauthorizedCerts === true) add('insecure-tls', n, 'allowUnauthorizedCerts = true');\n\n    if (n.type === 'n8n-nodes-base.httpRequest') {\n      if (!n.retryOnFail) add('http-no-retry', n, '');\n      const url = typeof p.url === 'string' ? p.url : '';\n      const mm = url.replace(/^=/, '').match(/^http:\\/\\/([^/:?#]+)/i);\n      if (mm && !/^(localhost|127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2\\d|3[01])\\.|host\\.docker\\.internal$|\\[?::1)/i.test(mm[1]) && !/\\.(local|internal|lan)$/i.test(mm[1]) && !/^[a-z0-9-]+$/i.test(mm[1]))\n        add('plain-http', n, url.replace(/^=/, ''));\n    }\n\n    if (!isTrigger(n) && !incoming.get(n.name) && !outs.some((o) => o.type !== 'main')) add('orphan-node', n, n.type);\n  }\n  return findings;\n}\n\nfunction summarize(findings) {\n  const s = { error: 0, warn: 0, info: 0 };\n  findings.forEach((f) => { s[f.level]++; });\n  return s;\n}\n\nmodule.exports = { RULES, LEVELS, auditWorkflow, extractWorkflows, looksLikeWorkflow, summarize, redact };\n\n  return module.exports;\n})();\n\n// ---- run the audit on every workflow returned by the n8n API ----\nconst s = $('Settings').first().json;\nconst LEVEL = { error: 3, warn: 2, info: 1 };\nconst min = LEVEL[s.minLevel] || 2;\nconst ignore = String(s.ignoreNames || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);\nconst base = String(s.n8nEditorUrl || '').replace(/\\/+$/, '');\nconst results = [];\nlet scanned = 0;\nfor (const item of $input.all()) {\n  const wf = item.json;\n  if (!wf || !Array.isArray(wf.nodes) || wf.isArchived) continue;\n  if (ignore.includes(String(wf.name || '').toLowerCase())) continue;\n  scanned++;\n  const findings = Audit.auditWorkflow(wf).filter(f => LEVEL[f.level] >= min);\n  if (findings.length) results.push({ id: wf.id, name: wf.name, active: !!wf.active, findings });\n}\nconst count = { error: 0, warn: 0, info: 0 };\nresults.forEach(r => r.findings.forEach(f => count[f.level]++));\nresults.sort((a, b) => (b.active - a.active) || (b.findings.filter(f => f.level === 'error').length - a.findings.filter(f => f.level === 'error').length));\nconst icon = { error: '🔴', warn: '🟠', info: '🔵' };\nconst lines = [`n8n workflow audit: ${scanned} workflows checked, ${results.length} with findings (${count.error} errors, ${count.warn} warnings${min <= 1 ? ', ' + count.info + ' info' : ''})`];\nfor (const r of results) {\n  lines.push('', `*${r.name}*${r.active ? ' (active)' : ''}${base ? ' ' + base + '/workflow/' + r.id : ''}`);\n  const max = Number(s.maxFindingsPerWorkflow) || 8;\n  r.findings.slice(0, max).forEach(f => lines.push(`${icon[f.level]} ${f.title}${f.node ? ' [' + f.node + ']' : ''}${f.detail ? ': ' + f.detail : ''}`));\n  if (r.findings.length > max) lines.push(`…and ${r.findings.length - max} more`);\n}\n// keep the message under chat limits (Slack ~4000 chars) without cutting a line in half\nlet text = '';\nfor (const l of lines) {\n  if ((text + l).length > 3700) { text += '\\n…report truncated. Lower maxFindingsPerWorkflow or raise minLevel to see everything.'; break; }\n  text += (text ? '\\n' : '') + l;\n}\nreturn [{ json: { scanned, workflowsWithFindings: results.length, errors: count.error, warnings: count.warn, info: count.info, text, results } }];\n"
+      },
+      "id": "ec249f5e-1ffc-5267-aa32-012ef9d080d9",
+      "name": "Audit workflows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9e5270b6-cb0d-5c52-9086-daca9ed11aea",
+              "leftValue": "={{ $json.workflowsWithFindings }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e12a5fb5-7b2a-58ba-b07a-93cffec2b06e",
+      "name": "Any findings?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.chatWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, content: ($json.text).slice(0, 1990) }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "6c6fff6b-2af4-5054-a426-ebf4dd9b340f",
+      "name": "Post report to chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "ea37273c-0c39-52c8-b667-fddd0426b173",
+      "name": "All clean",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 1. Settings\nPaste your **incoming webhook URL** (Slack, Discord, Google Chat, Mattermost) and your n8n editor URL (used for links in the report).",
+        "width": 250,
+        "height": 220,
+        "color": 5
+      },
+      "id": "700e2164-14ed-5be0-bb88-e702afda5c02",
+      "name": "Note settings",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        280,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 2. n8n API credential\nCreate an API key under **Settings > n8n API**, then add it here. Base URL: `https://your-n8n/api/v1`.",
+        "width": 235,
+        "height": 220,
+        "color": 5
+      },
+      "id": "fdb46b42-8597-589b-94c4-28fe2cab9914",
+      "name": "Note api",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        545,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 3. Report\nOnly sent when something is found. Swap the HTTP node for a Slack, Telegram or Gmail node if you prefer. Tip: set an error workflow for this workflow too.",
+        "width": 300,
+        "height": 200,
+        "color": 5
+      },
+      "id": "1571cbd1-4bc4-5945-baf4-7033c2f21e0b",
+      "name": "Note report",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Every Monday 8:00": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run audit now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Get all workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get all workflows": {
+      "main": [
+        [
+          {
+            "node": "Audit workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit workflows": {
+      "main": [
+        [
+          {
+            "node": "Any findings?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any findings?": {
+      "main": [
+        [
+          {
+            "node": "Post report to chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "All clean",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

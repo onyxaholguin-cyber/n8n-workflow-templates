@@ -1,0 +1,277 @@
+{
+  "name": "Get a chat alert when a new stable n8n version is released (self-hosted upgrade reminder)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Know when to upgrade your self-hosted n8n\n**Who it's for:** anyone running n8n on their own server (Docker, npm, Kubernetes) who wants to hear about new stable versions without watching GitHub.\n\n**What it does:** once a day it reads n8n's GitHub releases, skips pre-releases and other packages, and compares them with the version you run. When there's something newer it posts one message: the latest stable version, how many releases you're behind, a link to each, and a warning on a **major version jump** (read the breaking changes first). It remembers the last version it told you about, so you get one message per new release, not one per day.\n\n### Setup (2 minutes)\n1. In **Settings**: set `currentVersion` to the version you run (Settings > About n8n, or `docker exec <container> n8n --version`) and paste your chat incoming webhook URL.\n2. **Execute workflow** to test, then **Publish** (activate). The \"already told you\" memory only works in published runs.\n3. After you upgrade, update `currentVersion`.\n\nUses the public GitHub API without a token (60 requests/hour limit; this uses 1 per day).\n\nBefore upgrading: back up the database and keep your `N8N_ENCRYPTION_KEY`. Step-by-step: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/update-self-hosted-n8n-docker/",
+        "width": 560,
+        "height": 860,
+        "color": 4
+      },
+      "id": "660eccdc-8fcc-5ca3-8715-63cab9afad3c",
+      "name": "Main note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "4a1dedb5-76a2-5978-8a45-91385e08215f",
+      "name": "Every day 9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        140,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "30164b74-6e94-5418-9732-fbe5f15d1558",
+      "name": "Check now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0a25112a-a30b-5af8-8d74-b8678ccbddd5",
+              "name": "currentVersion",
+              "value": "2.40.6",
+              "type": "string"
+            },
+            {
+              "id": "127adc2c-ba46-5f70-accf-ba91f398088a",
+              "name": "chatWebhookUrl",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "ff07d831-c46a-570c-b46f-69b2a83d9e43",
+              "name": "releasesUrl",
+              "value": "https://api.github.com/repos/n8n-io/n8n/releases?per_page=40",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5c68c46d-fb52-5585-aff2-83a4a64871eb",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.releasesUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "f1381607-f417-5e2b-90e4-3c5f41abd768",
+      "name": "Get n8n releases",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- n8n_release.js ----\n// Compare n8n GitHub releases with the version you run; list newer stable releases.\nfunction parseV(s) { const m = String(s || '').match(/(\\d+)\\.(\\d+)\\.(\\d+)(?:-([0-9A-Za-z.-]+))?/); return m ? { v: [+m[1], +m[2], +m[3]], pre: m[4] || '' } : null; }\nfunction cmp(a, b) { for (let i = 0; i < 3; i++) if (a.v[i] !== b.v[i]) return a.v[i] - b.v[i]; return 0; }\nfunction releaseReport(releases, cfg) {\n  const cur = parseV(cfg.currentVersion);\n  if (!cur) throw new Error('Set currentVersion to the n8n version you run, e.g. 2.40.6');\n  const seen = parseV(cfg.lastNotified || '');\n  const stable = (Array.isArray(releases) ? releases : [])\n    .filter((r) => !r.draft && !r.prerelease)\n    .map((r) => ({ r, p: parseV(r.tag_name || r.name) }))\n    .filter((x) => x.p && !x.p.pre && /^n8n@|^v?\\d/.test(String(x.r.tag_name || '')));\n  const newer = stable.filter((x) => cmp(x.p, cur) > 0).sort((a, b) => cmp(b.p, a.p));\n  if (!newer.length) return { newer: [], latest: null, text: '', notify: false };\n  const latest = newer[0];\n  const notify = !seen || cmp(latest.p, seen) > 0;\n  const majorJump = latest.p.v[0] > cur.v[0];\n  const minors = new Set(newer.map((x) => x.p.v[0] + '.' + x.p.v[1])).size;\n  const lines = newer.slice(0, 8).map((x) => `• ${x.p.v.join('.')} (${String(x.r.published_at || '').slice(0, 10)}) ${x.r.html_url || ''}`);\n  const text = `New n8n release${newer.length > 1 ? 's' : ''}: you run ${cur.v.join('.')}, latest stable is ${latest.p.v.join('.')} (${newer.length} newer release${newer.length > 1 ? 's' : ''}${minors > 1 ? ', ' + minors + ' minor versions' : ''}).`\n    + (majorJump ? '\\n⚠️ Major version jump: read the breaking changes first: https://docs.n8n.io/release-notes/' : '\\nRelease notes: https://docs.n8n.io/release-notes/')\n    + '\\n' + lines.join('\\n') + (newer.length > 8 ? `\\n…and ${newer.length - 8} more` : '')\n    + '\\nBefore upgrading: back up the database and keep your N8N_ENCRYPTION_KEY.';\n  return { newer: newer.map((x) => x.p.v.join('.')), latest: latest.p.v.join('.'), majorJump, notify, text };\n}\nconst s = $('Settings').first().json;\nif (!/^https?:\\/\\//.test(String(s.chatWebhookUrl || ''))) throw new Error('Paste your chat incoming webhook URL into the Settings node.');\nconst releases = $input.all().map((i) => i.json);\nconst memory = $getWorkflowStaticData('global');            // persists in published (active) runs only\nconst r = releaseReport(releases, { currentVersion: s.currentVersion, lastNotified: memory.lastNotified });\nif (r.notify && $execution.mode !== 'manual') memory.lastNotified = r.latest;\nreturn [{ json: { latest: r.latest, newer: r.newer, majorJump: !!r.majorJump, notify: r.notify, text: r.notify ? r.text : '' } }];\n"
+      },
+      "id": "1927ef59-dfed-5d91-a0a9-0f803f2a94dc",
+      "name": "Compare versions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "42db726b-7c54-57e4-81cd-41c25b494e5e",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "103a39a8-aac6-59af-9570-db6665251728",
+      "name": "Anything to report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.chatWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, content: ($json.text).slice(0, 1990) }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "af4bac40-da5c-5f84-95d3-fb1139840e7f",
+      "name": "Post to chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "09006138-da1b-5960-9167-3947d16e61fa",
+      "name": "Nothing to report",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Compare versions": {
+      "main": [
+        [
+          {
+            "node": "Anything to report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to report?": {
+      "main": [
+        [
+          {
+            "node": "Post to chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day 9:00": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Get n8n releases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get n8n releases": {
+      "main": [
+        [
+          {
+            "node": "Compare versions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
