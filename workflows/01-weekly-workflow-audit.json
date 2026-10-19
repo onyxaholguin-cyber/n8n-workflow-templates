@@ -1,19 +1,18 @@
 {
-  "name": "Audit all n8n workflows weekly for leaked secrets, open webhooks and missing error handling",
+  "name": "Audit n8n workflows weekly for leaked secrets, open webhooks and missing error handling",
   "nodes": [
     {
       "parameters": {
-        "content": "## Weekly security and reliability audit of your n8n workflows\n**Who it's for:** anyone running n8n in production (self-hosted or Cloud) who wants to catch risky workflows before they cause an incident.\n\n**What it does:** every Monday it reads all your workflows through the n8n API and checks them for:\n- API keys, tokens, webhook URLs or passwords **pasted into nodes** (shown redacted)\n- **Webhooks without authentication**\n- Workflows with an automatic trigger but **no error workflow**\n- Errors **swallowed** by \"Continue\" settings, error outputs connected to nothing\n- **Pinned test data**, orphan nodes, disabled TLS checks, plain-HTTP calls\n\nIt posts one summary to Slack, Discord, Google Chat or Mattermost (incoming webhook). Nothing is sent when everything is clean.\n\n### Setup (5 minutes)\n1. **Settings** > APIs in n8n: create an API key. Add an **n8n API** credential to the *Get all workflows* node (Base URL: `https://your-n8n/api/v1`).\n2. Open **Settings** (the Set node): paste your chat **incoming webhook URL** and your n8n editor URL.\n3. Click **Execute workflow** (the *Run audit now* trigger) to get a report right away, then **Publish** (activate) it for the weekly run.\n\n### Customize\n- `minLevel`: `error`, `warn` (default) or `info`.\n- `ignoreNames`: comma-separated workflow names to skip.\n- Per node: add `audit-ignore: rule-id` to a node's **Notes** to silence one finding.\n\nThe checks are the open-source **n8n-workflow-audit** rules (MIT). The same checks run as a CLI and GitHub Action: github.com/onyxaholguin-cyber/n8n-workflow-audit",
+        "content": "## Weekly security and reliability audit of your n8n workflows\n**Who it's for:** anyone running n8n in production (self-hosted or Cloud) who wants to catch risky workflows before they cause an incident.\n\n### How it works\nEvery Monday it reads all your workflows through the n8n API and checks them for:\n- API keys, tokens, webhook URLs or passwords **pasted into nodes** (shown redacted)\n- **Webhooks without authentication**\n- Workflows with an automatic trigger but **no error workflow**\n- Errors **swallowed** by \"Continue\" settings, error outputs connected to nothing\n- **Pinned test data**, orphan nodes, disabled TLS checks, plain-HTTP calls\n\nIt posts one summary to Slack, Discord, Google Chat or Mattermost (incoming webhook). Nothing is sent when everything is clean.\n\n### Setup\nAbout 5 minutes.\n1. **Settings** > APIs in n8n: create an API key. Add an **n8n API** credential to the *Get all workflows* node (Base URL: `https://your-n8n/api/v1`).\n2. Open **Settings** (the Set node): paste your chat **incoming webhook URL** and your n8n editor URL.\n3. Click **Execute workflow** (the *Run audit now* trigger) to get a report right away, then **Publish** (activate) it for the weekly run.\n\n### Customization\n- `minLevel`: `error`, `warn` (default) or `info`.\n- `ignoreNames`: comma-separated workflow names to skip.\n- Per node: add `audit-ignore: rule-id` to a node's **Notes** to silence one finding.\n\nThe checks are the open-source **n8n-workflow-audit** rules (MIT). The same checks run as a CLI and GitHub Action: github.com/onyxaholguin-cyber/n8n-workflow-audit",
         "width": 520,
-        "height": 880,
-        "color": 4
+        "height": 880
       },
       "id": "a91bf1be-1aca-5fe1-91b6-5abac3d4485b",
       "name": "Main note",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -460,
+        -470,
         -260
       ]
     },
@@ -110,13 +109,7 @@
       "position": [
         580,
         200
-      ],
-      "credentials": {
-        "n8nApi": {
-          "id": "",
-          "name": "n8n account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -200,50 +193,50 @@
     },
     {
       "parameters": {
-        "content": "### 1. Settings\nPaste your **incoming webhook URL** (Slack, Discord, Google Chat, Mattermost) and your n8n editor URL (used for links in the report).",
-        "width": 250,
-        "height": 220,
-        "color": 5
+        "content": "## 1. Schedule and settings",
+        "height": 410,
+        "width": 420,
+        "color": 7
       },
-      "id": "700e2164-14ed-5be0-bb88-e702afda5c02",
-      "name": "Note settings",
+      "id": "9cfe2ac2-7817-5d06-ab93-de905b140129",
+      "name": "Section 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        280,
-        -60
+        90,
+        110
       ]
     },
     {
       "parameters": {
-        "content": "### 2. n8n API credential\nCreate an API key under **Settings > n8n API**, then add it here. Base URL: `https://your-n8n/api/v1`.",
-        "width": 235,
-        "height": 220,
-        "color": 5
+        "content": "## 2. Read and audit all workflows",
+        "height": 230,
+        "width": 420,
+        "color": 7
       },
-      "id": "fdb46b42-8597-589b-94c4-28fe2cab9914",
-      "name": "Note api",
+      "id": "a901a5dd-f68a-5b1c-bbb2-aab1b8034b8e",
+      "name": "Section 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        545,
-        -60
+        530,
+        110
       ]
     },
     {
       "parameters": {
-        "content": "### 3. Report\nOnly sent when something is found. Swap the HTTP node for a Slack, Telegram or Gmail node if you prefer. Tip: set an error workflow for this workflow too.",
-        "width": 300,
-        "height": 200,
-        "color": 5
+        "content": "## 3. Send the report",
+        "height": 430,
+        "width": 420,
+        "color": 7
       },
-      "id": "1571cbd1-4bc4-5945-baf4-7033c2f21e0b",
-      "name": "Note report",
+      "id": "eb0863cd-0ff2-5eee-935c-5e5c06168768",
+      "name": "Section 3",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1160,
-        -120
+        970,
+        10
       ]
     }
   ],

@@ -1,19 +1,18 @@
 {
-  "name": "Get instant chat alerts when any n8n workflow fails (Slack, Discord, Google Chat)",
+  "name": "Send a chat alert to Slack, Discord or Google Chat when any n8n workflow fails",
   "nodes": [
     {
       "parameters": {
-        "content": "## Instant alert when any workflow fails\n**Who it's for:** anyone with n8n workflows in production. Without an error workflow, failed runs are silent.\n\n**What it does:** runs whenever a workflow that uses it fails, and posts one message with the workflow name, the failing node, the error message, whether it was a retry, and a link to the execution. It works with any chat app that has incoming webhooks: Slack, Discord, Google Chat, Mattermost, Rocket.Chat.\n\n### Setup (3 minutes)\n1. Open **Settings**: paste your chat **incoming webhook URL**. Optionally set an environment label (like `prod`).\n2. **Activate (publish)** this workflow. In n8n 2.x an error workflow that is not active is skipped (the log says *\"is not active and cannot be executed\"*).\n3. In each workflow you want to watch: **⋯ > Settings > Error workflow**, pick this workflow and save.\n4. Test: make a workflow fail on purpose (for example, a Code node with `throw new Error('test')`) and run it from its production trigger.\n\n### Good to know\n- Error workflows run for **production** executions (triggers, schedules, webhooks), not for manual test runs in the editor.\n- Want dedupe of repeated alerts, email/Telegram routing, backups and uptime checks? This template is a simplified version of the error router in the *n8n Reliability Pack* by Sheet & Flow.",
+        "content": "## Instant alert when any workflow fails\n**Who it's for:** anyone with n8n workflows in production. Without an error workflow, failed runs are silent.\n\n### How it works\nRuns whenever a workflow that uses it fails, and posts one message with the workflow name, the failing node, the error message, whether it was a retry, and a link to the execution. It works with any chat app that has incoming webhooks: Slack, Discord, Google Chat, Mattermost, Rocket.Chat.\n\n### Setup\nAbout 3 minutes.\n1. Open **Settings**: paste your chat **incoming webhook URL**. Optionally set an environment label (like `prod`).\n2. **Activate (publish)** this workflow. In n8n 2.x an error workflow that is not active is skipped (the log says *\"is not active and cannot be executed\"*).\n3. In each workflow you want to watch: **⋯ > Settings > Error workflow**, pick this workflow and save.\n4. Test: make a workflow fail on purpose (for example, a Code node with `throw new Error('test')`) and run it from its production trigger.\n\n### Customization\n- Error workflows run for **production** executions (triggers, schedules, webhooks), not for manual test runs in the editor.\n- Want dedupe of repeated alerts, email/Telegram routing, backups and uptime checks? This template is a simplified version of the error router in the *n8n Reliability Pack* by Sheet & Flow.",
         "width": 480,
-        "height": 780,
-        "color": 4
+        "height": 780
       },
       "id": "7d6a550a-06ab-59d8-9441-31daedf7936f",
       "name": "Main note",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -420,
+        -430,
         -240
       ]
     },
@@ -95,34 +94,34 @@
     },
     {
       "parameters": {
-        "content": "### Settings\nPaste the incoming webhook URL of your Slack / Discord / Google Chat channel here.",
-        "width": 240,
-        "height": 180,
-        "color": 5
+        "content": "## 1. Catch the failure",
+        "height": 230,
+        "width": 420,
+        "color": 7
       },
-      "id": "7e9c4172-46b9-5afa-a363-e179e7da30f2",
-      "name": "Note settings",
+      "id": "36df271f-3a4a-5508-8373-a0e6fff63d11",
+      "name": "Section 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        300,
-        -20
+        90,
+        110
       ]
     },
     {
       "parameters": {
-        "content": "### Post\nSends `text` (Slack, Google Chat, Mattermost) and `content` (Discord) in one request. Retries 3 times.",
-        "width": 260,
-        "height": 180,
-        "color": 5
+        "content": "## 2. Build and send the alert",
+        "height": 230,
+        "width": 420,
+        "color": 7
       },
-      "id": "9a06687b-2bb1-5834-bde1-8ec7e1523561",
-      "name": "Note post",
+      "id": "09d5a4d2-eaed-5ed0-b474-dcebcdd66666",
+      "name": "Section 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        740,
-        -20
+        530,
+        110
       ]
     }
   ],

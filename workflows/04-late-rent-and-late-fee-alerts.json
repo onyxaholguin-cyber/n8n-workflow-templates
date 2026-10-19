@@ -1,12 +1,11 @@
 {
-  "name": "Daily late rent and late fee alerts from a Google Sheet rent ledger (grace period, flat, percent, daily fee, cap)",
+  "name": "Send daily late rent and late fee alerts from a Google Sheets rent ledger to chat",
   "nodes": [
     {
       "parameters": {
-        "content": "## Late rent and late fee alerts for small landlords\n**Who it's for:** landlords and small property managers who track rent in a spreadsheet and want a morning message when rent is late, instead of checking the sheet by hand.\n\n**What it does:** every morning it reads your rent ledger (a Google Sheet published as CSV, or any CSV link), works out for each charge how many days late it is, the **late fee** under your rule and the balance owed, and posts one message to Slack, Discord, Google Chat or Mattermost listing everything that's **LATE**, **Fee owed** (rent paid, fee not) or **Partial**. Nothing is sent when everyone has paid.\n\n**Late fee rule** (set in *Settings*): no fee while days late ≤ `graceDays`; after that `lateFeeFlat` + `lateFeePercent` × rent + `dailyFee` × each day past the grace period, never more than `maxFee` (0 = no cap). Days late = date paid in full (or today) − due date.\n\n### Setup (5 minutes)\n1. Make a sheet with the columns **Tenant, Unit, Due date, Rent, Amount paid, Date paid** (one row per rent charge; dates as YYYY-MM-DD or MM/DD/YYYY).\n2. Google Sheets: **File > Share > Publish to web**, pick that tab, **CSV**, copy the link. (It's readable by anyone with the link; use tenant initials or unit numbers if that matters to you.)\n3. In **Settings**: paste the CSV link and your chat incoming webhook URL, and set your grace period and fees to match your lease and state law.\n4. Click **Execute workflow** to test, then **Publish** (activate) for the daily 8:00 run.\n\nGrace periods differ by state (e.g. Colorado: no fee until 7 days late, so `graceDays` = 6). Not legal advice.\n\nFormula walkthrough and a spreadsheet version: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/rent-late-fee-calculator-spreadsheet/",
+        "content": "## Late rent and late fee alerts for small landlords\n**Who it's for:** landlords and small property managers who track rent in a spreadsheet and want a morning message when rent is late, instead of checking the sheet by hand.\n\n### How it works\nEvery morning it reads your rent ledger (a Google Sheet published as CSV, or any CSV link), works out for each charge how many days late it is, the **late fee** under your rule and the balance owed, and posts one message to Slack, Discord, Google Chat or Mattermost listing everything that's **LATE**, **Fee owed** (rent paid, fee not) or **Partial**. Nothing is sent when everyone has paid.\n\n**Late fee rule** (set in *Settings*): no fee while days late ≤ `graceDays`; after that `lateFeeFlat` + `lateFeePercent` × rent + `dailyFee` × each day past the grace period, never more than `maxFee` (0 = no cap). Days late = date paid in full (or today) − due date.\n\n### Setup\nAbout 5 minutes.\n1. Make a sheet with the columns **Tenant, Unit, Due date, Rent, Amount paid, Date paid** (one row per rent charge; dates as YYYY-MM-DD or MM/DD/YYYY).\n2. Google Sheets: **File > Share > Publish to web**, pick that tab, **CSV**, copy the link. (It's readable by anyone with the link; use tenant initials or unit numbers if that matters to you.)\n3. In **Settings**: paste the CSV link and your chat incoming webhook URL, and set your grace period and fees to match your lease and state law.\n4. Click **Execute workflow** to test, then **Publish** (activate) for the daily 8:00 run.\n\nGrace periods differ by state (e.g. Colorado: no fee until 7 days late, so `graceDays` = 6). Not legal advice.\n\nFormula walkthrough and a spreadsheet version: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/rent-late-fee-calculator-spreadsheet/",
         "width": 560,
-        "height": 980,
-        "color": 4
+        "height": 980
       },
       "id": "2d072f55-b147-5275-9ad7-0c4585ae64db",
       "name": "Main note",
@@ -220,34 +219,50 @@
     },
     {
       "parameters": {
-        "content": "### Settings\nCSV link, chat webhook, and your fee rule. `asOfDate` blank = today (handy for testing a past date).",
-        "width": 230,
-        "height": 220,
-        "color": 5
+        "content": "## 1. Schedule and settings",
+        "height": 410,
+        "width": 420,
+        "color": 7
       },
-      "id": "033bdfc3-2f94-5e92-a289-46038e4e8360",
-      "name": "Note settings",
+      "id": "d2d56d0b-4bf4-5649-b784-05b493e6f14a",
+      "name": "Section 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        300,
-        -60
+        90,
+        110
       ]
     },
     {
       "parameters": {
-        "content": "### Post\nOne message per run, only when something needs attention. Swap the HTTP node for Slack, Telegram, Gmail or SMS if you prefer.",
-        "width": 280,
-        "height": 200,
-        "color": 5
+        "content": "## 2. Read ledger, work out fees",
+        "height": 230,
+        "width": 420,
+        "color": 7
       },
-      "id": "ae74f3d5-37f4-5a1c-945f-d4109d48ccf8",
-      "name": "Note post",
+      "id": "f480765c-68e2-53e0-a8db-df9c0cdfc1ae",
+      "name": "Section 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1220,
-        -120
+        530,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Post late rent to chat",
+        "height": 430,
+        "width": 420,
+        "color": 7
+      },
+      "id": "0f3e2954-1807-537b-81d9-a2477d66810a",
+      "name": "Section 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        970,
+        10
       ]
     }
   ],

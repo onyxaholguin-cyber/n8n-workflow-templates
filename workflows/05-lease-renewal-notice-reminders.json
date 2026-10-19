@@ -1,12 +1,11 @@
 {
-  "name": "Weekly lease renewal reminders: get a chat alert before each renewal or rent increase notice is due",
+  "name": "Send lease renewal notice reminders from a Google Sheets lease list to chat",
   "nodes": [
     {
       "parameters": {
-        "content": "## Never miss a lease renewal notice deadline\n**Who it's for:** landlords and property managers who keep leases in a spreadsheet. Most leases and many states require written notice 30, 60 or 90 days before the lease ends (for non-renewal or a rent increase); miss it and the lease can roll over on the old terms.\n\n**What it does:** every Monday it reads your lease list (Google Sheet published as CSV, or any CSV link) and works out the **send-by date** for each lease: lease end − notice days − mailing buffer. It posts one message with every notice due in the next `alertWindowDays` (and any that are already overdue), with the proposed new rent if you set an increase. Leases marked Renewed / Moved out / Notice sent are skipped.\n\n### Setup (5 minutes)\n1. Sheet columns: **Tenant, Unit, Lease end, Notice days** (optional, overrides the default), **Rent, Increase %** (optional), **Status** (optional).\n2. Google Sheets: **File > Share > Publish to web** > that tab > **CSV**, copy the link.\n3. In **Settings**: paste the CSV link and your chat incoming webhook URL; set `noticeDays` (default 60), `mailingBufferDays` (days you allow for mail/delivery) and `alertWindowDays`.\n4. **Execute workflow** to test, then **Publish** for the weekly run.\n\nExample: lease ends Dec 31, 60-day notice, 5-day buffer → send by Oct 27. Notice rules vary by state and lease; not legal advice.\n\nSpreadsheet version and walkthrough: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/lease-renewal-tracker-spreadsheet/",
+        "content": "## Never miss a lease renewal notice deadline\n**Who it's for:** landlords and property managers who keep leases in a spreadsheet. Most leases and many states require written notice 30, 60 or 90 days before the lease ends (for non-renewal or a rent increase); miss it and the lease can roll over on the old terms.\n\n### How it works\nEvery Monday it reads your lease list (Google Sheet published as CSV, or any CSV link) and works out the **send-by date** for each lease: lease end − notice days − mailing buffer. It posts one message with every notice due in the next `alertWindowDays` (and any that are already overdue), with the proposed new rent if you set an increase. Leases marked Renewed / Moved out / Notice sent are skipped.\n\n### Setup\nAbout 5 minutes.\n1. Sheet columns: **Tenant, Unit, Lease end, Notice days** (optional, overrides the default), **Rent, Increase %** (optional), **Status** (optional).\n2. Google Sheets: **File > Share > Publish to web** > that tab > **CSV**, copy the link.\n3. In **Settings**: paste the CSV link and your chat incoming webhook URL; set `noticeDays` (default 60), `mailingBufferDays` (days you allow for mail/delivery) and `alertWindowDays`.\n4. **Execute workflow** to test, then **Publish** for the weekly run.\n\nExample: lease ends Dec 31, 60-day notice, 5-day buffer → send by Oct 27. Notice rules vary by state and lease; not legal advice.\n\nSpreadsheet version and walkthrough: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/lease-renewal-tracker-spreadsheet/",
         "width": 560,
-        "height": 960,
-        "color": 4
+        "height": 960
       },
       "id": "53ef99c0-5877-5266-b85c-843976cb4bd3",
       "name": "Main note",
@@ -212,18 +211,50 @@
     },
     {
       "parameters": {
-        "content": "### Settings\nCSV link, chat webhook, default notice days, mailing buffer and how far ahead to warn you.",
-        "width": 230,
-        "height": 220,
-        "color": 5
+        "content": "## 1. Schedule and settings",
+        "height": 410,
+        "width": 420,
+        "color": 7
       },
-      "id": "1dee66da-cdac-5101-a571-5497b769da01",
-      "name": "Note settings",
+      "id": "b6008688-5a94-5635-b6d7-e432d393fde3",
+      "name": "Section 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        300,
-        -60
+        90,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Read leases, work out send-by dates",
+        "height": 230,
+        "width": 420,
+        "color": 7
+      },
+      "id": "85af7e40-9d71-5168-9c0c-6ed2afc65d91",
+      "name": "Section 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        530,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Post reminders to chat",
+        "height": 430,
+        "width": 420,
+        "color": 7
+      },
+      "id": "7a0fd93b-b723-50bf-92f4-7b0d444105f6",
+      "name": "Section 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        970,
+        10
       ]
     }
   ],

@@ -1,19 +1,18 @@
 {
-  "name": "Categorize bank CSV transactions into Schedule C or Schedule E tax categories with an n8n form",
+  "name": "Categorize bank CSV transactions into Schedule C or E tax lines with an n8n form",
   "nodes": [
     {
       "parameters": {
-        "content": "## Bank CSV → tax categories (Schedule C / Schedule E)\n**Who it's for:** freelancers, sole proprietors and small landlords (US) who export transactions from their bank and sort them in a spreadsheet at tax time.\n\n**What it does:** a simple web form. Upload a bank or credit-card CSV, pick **Freelancer (Schedule C)** or **Landlord (Schedule E)**, and get back a categorized CSV plus totals per tax line. Your file is processed inside your own n8n; nothing goes to a third party.\n\n- Detects Date / Description / Amount (or Debit / Credit) columns automatically, even with bank info above the header\n- Handles `$1,234.56`, `(45.10)`, `1.234,56`, most date formats, comma/semicolon/tab files\n- Keyword rules map merchants to categories (Adobe → Software, Home Depot → Supplies, Xcel → Utilities…); unmatched rows are left blank for you to fill\n- Mortgage payments are deliberately left blank (split interest, principal and escrow yourself)\n\n### Setup (2 minutes)\n1. **Publish** (activate) the workflow and open the **Production URL** of the form trigger.\n2. Upload a CSV and download the result. Paste it into your spreadsheet.\n\n### Customize\nEdit the keyword rules in the **Categorize** node (search for `rules:`). Categories follow the column layout of the Sheet & Flow Rental Property Tracker and Freelancer Finance Tracker, but work with any sheet.\n\n*Organizes records only; not tax advice. Categorizer logic: github.com/onyxaholguin-cyber/bank-csv-categorizer (MIT, tested).*",
+        "content": "## Bank CSV → tax categories (Schedule C / Schedule E)\n**Who it's for:** freelancers, sole proprietors and small landlords (US) who export transactions from their bank and sort them in a spreadsheet at tax time.\n\n### How it works\nA simple web form. Upload a bank or credit-card CSV, pick **Freelancer (Schedule C)** or **Landlord (Schedule E)**, and get back a categorized CSV plus totals per tax line. Your file is processed inside your own n8n; nothing goes to a third party.\n\n- Detects Date / Description / Amount (or Debit / Credit) columns automatically, even with bank info above the header\n- Handles `$1,234.56`, `(45.10)`, `1.234,56`, most date formats, comma/semicolon/tab files\n- Keyword rules map merchants to categories (Adobe → Software, Home Depot → Supplies, Xcel → Utilities…); unmatched rows are left blank for you to fill\n- Mortgage payments are deliberately left blank (split interest, principal and escrow yourself)\n\n### Setup\nAbout 2 minutes.\n1. **Publish** (activate) the workflow and open the **Production URL** of the form trigger.\n2. Upload a CSV and download the result. Paste it into your spreadsheet.\n3. The form URL is public by default: turn on **Basic Auth** in the trigger if others could find it.\n\n### Customization\nEdit the keyword rules in the **Categorize** node (search for `rules:`). Categories follow the column layout of the Sheet & Flow Rental Property Tracker and Freelancer Finance Tracker, but work with any sheet.\n\n*Organizes records only; not tax advice. Categorizer logic: github.com/onyxaholguin-cyber/bank-csv-categorizer (MIT, tested).*",
         "width": 520,
-        "height": 900,
-        "color": 4
+        "height": 900
       },
       "id": "bc1cae0b-4f04-5fd6-aaf3-20cb6362dd76",
       "name": "Main note",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -460,
+        -470,
         -300
       ]
     },
@@ -160,34 +159,34 @@
     },
     {
       "parameters": {
-        "content": "### Form\nPublic by default. Turn on **Basic Auth** in the trigger if the URL could be found by others.",
-        "width": 240,
-        "height": 180,
-        "color": 5
+        "content": "## 1. Upload the CSV",
+        "height": 230,
+        "width": 420,
+        "color": 7
       },
-      "id": "ae211ca8-c51b-5ee0-8bb5-78bb1e7126a5",
-      "name": "Note form",
+      "id": "f9153915-433d-58bb-9ebb-25b7e0492ccd",
+      "name": "Section 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        80,
-        -20
+        90,
+        110
       ]
     },
     {
       "parameters": {
-        "content": "### Categorize\nEdit keyword rules here. Blank category = no rule matched. Output columns match the Sheet & Flow trackers.",
-        "width": 260,
-        "height": 180,
-        "color": 5
+        "content": "## 2. Categorize and return the file",
+        "height": 230,
+        "width": 640,
+        "color": 7
       },
-      "id": "b8be247f-bc63-5665-9696-6c25b61451b3",
-      "name": "Note rules",
+      "id": "be19677e-5ef1-505b-9c71-c1091d1dcea5",
+      "name": "Section 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        520,
-        -20
+        530,
+        110
       ]
     }
   ],

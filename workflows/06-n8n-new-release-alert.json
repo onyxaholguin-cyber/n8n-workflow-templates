@@ -1,12 +1,11 @@
 {
-  "name": "Get a chat alert when a new stable n8n version is released (self-hosted upgrade reminder)",
+  "name": "Send a chat alert when a new stable n8n version is released",
   "nodes": [
     {
       "parameters": {
-        "content": "## Know when to upgrade your self-hosted n8n\n**Who it's for:** anyone running n8n on their own server (Docker, npm, Kubernetes) who wants to hear about new stable versions without watching GitHub.\n\n**What it does:** once a day it reads n8n's GitHub releases, skips pre-releases and other packages, and compares them with the version you run. When there's something newer it posts one message: the latest stable version, how many releases you're behind, a link to each, and a warning on a **major version jump** (read the breaking changes first). It remembers the last version it told you about, so you get one message per new release, not one per day.\n\n### Setup (2 minutes)\n1. In **Settings**: set `currentVersion` to the version you run (Settings > About n8n, or `docker exec <container> n8n --version`) and paste your chat incoming webhook URL.\n2. **Execute workflow** to test, then **Publish** (activate). The \"already told you\" memory only works in published runs.\n3. After you upgrade, update `currentVersion`.\n\nUses the public GitHub API without a token (60 requests/hour limit; this uses 1 per day).\n\nBefore upgrading: back up the database and keep your `N8N_ENCRYPTION_KEY`. Step-by-step: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/update-self-hosted-n8n-docker/",
+        "content": "## Know when to upgrade your self-hosted n8n\n**Who it's for:** anyone running n8n on their own server (Docker, npm, Kubernetes) who wants to hear about new stable versions without watching GitHub.\n\n### How it works\nOnce a day it reads n8n's GitHub releases, skips pre-releases and other packages, and compares them with the version you run. When there's something newer it posts one message: the latest stable version, how many releases you're behind, a link to each, and a warning on a **major version jump** (read the breaking changes first). It remembers the last version it told you about, so you get one message per new release, not one per day.\n\n### Setup\nAbout 2 minutes.\n1. In **Settings**: set `currentVersion` to the version you run (Settings > About n8n, or `docker exec <container> n8n --version`) and paste your chat incoming webhook URL.\n2. **Execute workflow** to test, then **Publish** (activate). The \"already told you\" memory only works in published runs.\n3. After you upgrade, update `currentVersion`.\n\nUses the public GitHub API without a token (60 requests/hour limit; this uses 1 per day).\n\nBefore upgrading: back up the database and keep your `N8N_ENCRYPTION_KEY`. Step-by-step: https://onyxaholguin-cyber.github.io/sheet-and-flow/tutorials/update-self-hosted-n8n-docker/",
         "width": 560,
-        "height": 860,
-        "color": 4
+        "height": 860
       },
       "id": "660eccdc-8fcc-5ca3-8715-63cab9afad3c",
       "name": "Main note",
@@ -189,6 +188,54 @@
       "position": [
         1240,
         300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Schedule and settings",
+        "height": 410,
+        "width": 420,
+        "color": 7
+      },
+      "id": "65738127-3a2b-5b27-9ed2-1010481f3253",
+      "name": "Section 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        90,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Get releases, compare versions",
+        "height": 230,
+        "width": 420,
+        "color": 7
+      },
+      "id": "2c267a42-ab03-5c75-b4c0-afa5a6a893d0",
+      "name": "Section 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        530,
+        110
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Post the upgrade alert",
+        "height": 430,
+        "width": 420,
+        "color": 7
+      },
+      "id": "39200c0d-5f1e-531b-9a54-3d6ac845217f",
+      "name": "Section 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        970,
+        10
       ]
     }
   ],
